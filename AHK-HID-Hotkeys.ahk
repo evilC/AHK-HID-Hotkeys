@@ -33,16 +33,24 @@ Class CHIDHotkeys {
 	{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: {type: "keyboard", key: "ctrl"}}
 	
 	Ctrl + RButton + Joystick 1, Button 12
-	{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: {type: "keyboard", key: "ctrl"}, {type: "mouse", key: "rbutton"}
+	{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: [{type: "keyboard", key: "ctrl"}, {type: "mouse", key: "rbutton"}]
 	
 	Joystick 1, Axis 2
 	{ input: {type: "joystick_axis", id: 1, key: "2"}}
 	*/
 	RegisterInput(binding, callback){
-		; Work in reverse order - final item = "end key"
+		if (IsObject(!binding.input)){
+			return 0
+		}
+		; Force modifiers to be array
+		if (!binding.modifiers.MaxIndex()){
+			binding.modifiers := [binding.modifiers]
+		}
+		; binding.input is the "End" key that can fire the binding
+		; binding.modifiers is an object (or array of objects) specifiying keys that also need to be held for the binding to fire
 		binding.key_down.MaxIndex()
-		Loop % binding.key_down.MaxIndex() {
-			;binding.key_down[A_Index]
+		Loop % binding.modifiers.MaxIndex() {
+			
 		}
 	}
 	
