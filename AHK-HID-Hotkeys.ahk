@@ -5,15 +5,15 @@ Class CHIDHotkeys {
 	__New(){
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
 		OnMessage(0x00FF, "_HIDHotkeysInputMsg")
-		this.Register()
+		this._HIDRegister()
 	}
 	
 	__Delete(){
-		this.UnRegister()
+		this._HIDUnRegister()
 		CHIDHotkeys._Instance := ""	; remove reference to instantiated class from Class Definition
 	}
 	
-	Register(){
+	_HIDRegister(){
 		global RIDEV_INPUTSINK
 		joysticks := {} ; disable for now
 		count := 0
@@ -29,7 +29,7 @@ Class CHIDHotkeys {
 		AHKHID_Register()
 	}
 	
-	UnRegister(){
+	_HIDUnRegister(){
 		global RIDEV_REMOVE
 		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
 		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
@@ -66,6 +66,7 @@ Class CHIDHotkeys {
 }
 
 _HIDHotkeysInputMsg(wParam, lParam) {
+	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
 	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
 	CHIDHotkeys._Instance.ProcessMessage(wParam, lParam)
 }
