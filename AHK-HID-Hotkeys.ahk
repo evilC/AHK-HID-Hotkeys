@@ -2,8 +2,8 @@
 
 ; Only ever instantiate once!
 Class CHIDHotkeys {
-	_Bindings := {}
-	
+	_Bindings := {keyboard: {}, mouse: {}, other: {}}
+	_StateIndex := {keyboard: {}, mouse: {}, other: {}}
 	__New(){
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
 		OnMessage(0x00FF, "_HIDHotkeysInputMsg")
@@ -15,43 +15,8 @@ Class CHIDHotkeys {
 		CHIDHotkeys._Instance := ""	; remove reference to instantiated class from Class Definition
 	}
 	
-	; Makes a Binding
-	/*
-	Either Ctrl + a (Down event is assumed)
-	{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}
-	
-	Left Ctrl + a (Down event is assumed)
-	{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "lctrl"}}
-	
-	Hold a, hit b
-	{ input: {type: "keyboard", key: "b"}, modifiers: {type: "keyboard", key: "a"}}
-	
-	Ctrl+RButton
-	{ input: {type: "mouse_button", key: "rbutton"}, modifiers: {type: "keyboard", key: "ctrl"}}
-	
-	Ctrl + Joystick 1, Button 12
-	{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: {type: "keyboard", key: "ctrl"}}
-	
-	Ctrl + RButton + Joystick 1, Button 12
-	{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: [{type: "keyboard", key: "ctrl"}, {type: "mouse", key: "rbutton"}]
-	
-	Joystick 1, Axis 2
-	{ input: {type: "joystick_axis", id: 1, key: "2"}}
-	*/
-	RegisterInput(binding, callback){
-		if (IsObject(!binding.input)){
-			return 0
-		}
-		; Force modifiers to be array
-		if (!binding.modifiers.MaxIndex()){
-			binding.modifiers := [binding.modifiers]
-		}
-		; binding.input is the "End" key that can fire the binding
-		; binding.modifiers is an object (or array of objects) specifiying keys that also need to be held for the binding to fire
-		binding.key_down.MaxIndex()
-		Loop % binding.modifiers.MaxIndex() {
-			
-		}
+	Add(binding, callback){
+		return new this._Binding(this, binding, callback)
 	}
 	
 	_HIDRegister(){
@@ -144,6 +109,9 @@ Class CHIDHotkeys {
 				}
 			}
 			s .= keyname
+			if (this._Bindings.keyboard[keyname]){
+				msgbox BOUND
+			}
 			;Tooltip % "Keyboard: " s (flags ? " Up" : " Down")
 		} Else If (r = RIM_TYPEHID) {
 			
@@ -189,7 +157,54 @@ Class CHIDHotkeys {
 		;-- Assemble and return the final value
 		Return l_NegativeChar . "0x" . l_Buffer
 	}
-
+	
+	Class _Binding {
+	; Makes a Binding
+		/*
+		Either Ctrl + a (Down event is assumed)
+		{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}
+		
+		Left Ctrl + a (Down event is assumed)
+		{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "lctrl"}}
+		
+		Hold a, hit b
+		{ input: {type: "keyboard", key: "b"}, modifiers: {type: "keyboard", key: "a"}}
+		
+		Ctrl+RButton
+		{ input: {type: "mouse_button", key: "rbutton"}, modifiers: {type: "keyboard", key: "ctrl"}}
+		
+		Ctrl + Joystick 1, Button 12
+		{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: {type: "keyboard", key: "ctrl"}}
+		
+		Ctrl + RButton + Joystick 1, Button 12
+		{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: [{type: "keyboard", key: "ctrl"}, {type: "mouse", key: "rbutton"}]
+		
+		Joystick 1, Axis 2
+		{ input: {type: "joystick_axis", id: 1, key: "2"}}
+		*/
+		__New(parent, binding, callback){
+			this._parent := parent
+			if (IsObject(!binding.input)){
+				return 0
+			}
+			; Force modifiers to be array
+			if (!binding.modifiers.MaxIndex()){
+				binding.modifiers := [binding.modifiers]
+			}
+			; bindings.keyboard.a : {modifiers: [...]}
+			; bindings.joystick[1].1 : {modifiers: [...]}
+			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
+				;this._parent._Bindings[binding.input.type][binding.input.key] := callback
+				this._parent._Bindings[binding.input.type][binding.input.key] := 1
+			}
+			; binding.input is the "End" key that can fire the binding
+			; binding.modifiers is an object (or array of objects) specifiying keys that also need to be held for the binding to fire
+			Loop % binding.modifiers.MaxIndex() {
+				
+			}
+			return this
+		}
+	}
 }
 
 _HIDHotkeysInputMsg(wParam, lParam) {
