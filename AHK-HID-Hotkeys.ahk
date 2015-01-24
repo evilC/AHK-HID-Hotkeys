@@ -87,14 +87,13 @@ Class CHIDHotkeys {
 		{
 			KeyName := GetKeyName("vk" NumGet(lParam+0, 0))
 			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
-				Tooltip, % "KBHook: Blocking" ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
+				Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
 				; Need to pass to function handling WM_INPUT, as it will not receive WM_INPUT message for this key, if the script is not the active app
-				;InputMsg(wParam, lParam)
+				;this._ProcessMessage(wParam, lParam)
 				return 1
 			}
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
-		;Return 1
 	}
 	
 	_HIDUnRegister(){
@@ -105,7 +104,7 @@ Class CHIDHotkeys {
 		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
 	}
 	
-	ProcessMessage(wParam, lParam){
+	_ProcessMessage(wParam, lParam){
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
 		global II_DEVTYPE, II_KBD_FLAGS, II_MSE_BUTTONFLAGS, II_KBD_VKEY, II_KBD_MAKECODE
 		r := AHKHID_GetInputInfo(lParam, II_DEVTYPE)
@@ -121,6 +120,7 @@ Class CHIDHotkeys {
 				; IMPORTANT NOTE!
 				; EVENT COULD CONTAIN MORE THAN ONE BUTTON CHANGE!!!
 				;soundbeep
+				a := 1
 			}
 		} Else If (r = RIM_TYPEKEYBOARD) {
 			; Keyboard Input
@@ -293,7 +293,7 @@ _HIDHotkeysKeyboardHook(nCode, wParam, lParam){
 _HIDHotkeysInputMsg(wParam, lParam) {
 	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
 	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
-	return CHIDHotkeys._Instance.ProcessMessage(wParam, lParam)
+	return CHIDHotkeys._Instance._ProcessMessage(wParam, lParam)
 }
 
 ; bind v1.1 by Lexikos

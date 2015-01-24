@@ -1,3 +1,5 @@
+; All code in main file for now, for easier debugging
+/*
 ; AHKHID test script
 #include <AHK-HID-Hotkeys>
 #SingleInstance force
@@ -35,3 +37,4 @@ Class CMainClass {
 Esc::ExitApp
 GuiClose:
 ExitApp
+*/
