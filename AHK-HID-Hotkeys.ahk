@@ -21,6 +21,9 @@ Class CHIDHotkeys {
 	
 	_HIDRegister(){
 		global RIDEV_INPUTSINK
+		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
+
+		; Register with HID
 		joysticks := {} ; disable for now
 		count := 0
 		for key, value in joysticks {
@@ -33,11 +36,34 @@ Class CHIDHotkeys {
 			AHKHID_AddRegister(obj.page, obj.usage, A_ScriptHwnd, RIDEV_INPUTSINK)
 		}
 		AHKHID_Register()
+		
+		; Register global hooks
+		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		;this._hHookMouse := SetWindowsHookEx(WH_MOUSE_LL, RegisterCallback("MouseMove", "Fast"))
+
+	}
+	
+	_KeyboardHook(nCode, wParam, lParam){
+		SetFormat, Integer, H
+		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
+		{
+			KeyName := GetKeyName("vk" NumGet(lParam+0, 0))
+			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
+				Tooltip, % "KBHook: Blocking" ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
+				; Need to pass to function handling WM_INPUT, as it will not receive WM_INPUT message for this key, if the script is not the active app
+				;InputMsg(wParam, lParam)
+				return 1
+			}
+		}
+		Return this._CallNextHookEx(nCode, wParam, lParam)
+		;Return 1
 	}
 	
 	_HIDUnRegister(){
 		global RIDEV_REMOVE
 		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
+		this._UnhookWindowsHookEx(this._hHookKeybd)
+		this._UnhookWindowsHookEx(this._hHookMouse)
 		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
 	}
 	
@@ -195,7 +221,7 @@ Class CHIDHotkeys {
 			; bindings.keyboard.a : {modifiers: [...]}
 			; bindings.joystick[1].1 : {modifiers: [...]}
 			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
-				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback}
+				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback, modes: binding.modes}
 				;this._parent._Bindings[binding.input.type][binding.input.key] := 1
 			}
 			; binding.input is the "End" key that can fire the binding
@@ -206,12 +232,30 @@ Class CHIDHotkeys {
 			return this
 		}
 	}
+	
+	_SetWindowsHookEx(idHook, pfn){
+		Return DllCall("SetWindowsHookEx", "int", idHook, "Uint", pfn, "Uint", DllCall("GetModuleHandle", "Uint", 0), "Uint", 0)
+	}
+
+	_UnhookWindowsHookEx(hHook){
+		Return DllCall("UnhookWindowsHookEx", "Uint", hHook)
+	}
+
+	_CallNextHookEx(nCode, wParam, lParam, hHook = 0){
+		Return DllCall("CallNextHookEx", "Uint", hHook, "int", nCode, "Uint", wParam, "Uint", lParam)
+	}
+
+}
+
+_HIDHotkeysKeyboardHook(nCode, wParam, lParam){
+	Critical
+	return CHIDHotkeys._Instance._KeyboardHook(nCode, wParam, lParam)
 }
 
 _HIDHotkeysInputMsg(wParam, lParam) {
 	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
 	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
-	CHIDHotkeys._Instance.ProcessMessage(wParam, lParam)
+	return CHIDHotkeys._Instance.ProcessMessage(wParam, lParam)
 }
 
 ; bind v1.1 by Lexikos
@@ -234,3 +278,4 @@ class BoundFunc {
         }
     }
 }
+

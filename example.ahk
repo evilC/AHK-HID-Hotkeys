@@ -7,15 +7,16 @@ HKHandler := new CHIDHotkeys()
 
 fn := Bind("DownEvent", "a")
 ;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, fn)
-;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modes: {passthru: 1}}, fn)
-hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modes: {passthru: 0}}, fn)
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
 
 c1 := new CMainClass()
 
 Return
 
 DownEvent(key){
-	msgbox DOWNEVENT %key%
+	;msgbox DOWNEVENT %key%
+	soundbeep
 }
 	
 Class CMainClass {
@@ -26,7 +27,8 @@ Class CMainClass {
 	}
 	
 	DownEvent(key){
-		msgbox DOWNEVENT %key%
+		;msgbox DOWNEVENT %key%
+		soundbeep
 	}
 }
 
