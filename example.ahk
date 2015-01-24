@@ -5,16 +5,28 @@ OnExit, GuiClose
 
 HKHandler := new CHIDHotkeys()
 
-;HKHandler.RegisterInput({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, "test")
+fn := Bind("DownEvent", "a")
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, fn)
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modes: {passthru: 1}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
+
+c1 := new CMainClass()
+
 Return
 
+DownEvent(key){
+	msgbox DOWNEVENT %key%
+}
+	
 Class CMainClass {
 	__New(){
-		this.hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, "DownEvent")
+		global HKHandler
+		fn := Bind(this.DownEvent, this, "b")
+		this.hk1 := HKHandler.Add({ input: {type: "keyboard", key: "b"}}, fn)
 	}
 	
-	DownEvent(){
-		
+	DownEvent(key){
+		msgbox DOWNEVENT %key%
 	}
 }
 

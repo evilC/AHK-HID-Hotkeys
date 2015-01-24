@@ -56,7 +56,7 @@ Class CHIDHotkeys {
 			if (flags){
 				; IMPORTANT NOTE!
 				; EVENT COULD CONTAIN MORE THAN ONE BUTTON CHANGE!!!
-				soundbeep
+				;soundbeep
 			}
 		} Else If (r = RIM_TYPEKEYBOARD) {
 			; Keyboard Input
@@ -109,8 +109,9 @@ Class CHIDHotkeys {
 				}
 			}
 			s .= keyname
-			if (this._Bindings.keyboard[keyname]){
-				msgbox BOUND
+			if (this._Bindings.keyboard[keyname].isbound){
+				fn := this._Bindings.keyboard[keyname].callback
+				fn.()
 			}
 			;Tooltip % "Keyboard: " s (flags ? " Up" : " Down")
 		} Else If (r = RIM_TYPEHID) {
@@ -159,7 +160,7 @@ Class CHIDHotkeys {
 	}
 	
 	Class _Binding {
-	; Makes a Binding
+		; Makes a Binding
 		/*
 		Either Ctrl + a (Down event is assumed)
 		{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}
@@ -194,8 +195,8 @@ Class CHIDHotkeys {
 			; bindings.keyboard.a : {modifiers: [...]}
 			; bindings.joystick[1].1 : {modifiers: [...]}
 			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
-				;this._parent._Bindings[binding.input.type][binding.input.key] := callback
-				this._parent._Bindings[binding.input.type][binding.input.key] := 1
+				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback}
+				;this._parent._Bindings[binding.input.type][binding.input.key] := 1
 			}
 			; binding.input is the "End" key that can fire the binding
 			; binding.modifiers is an object (or array of objects) specifiying keys that also need to be held for the binding to fire
@@ -211,4 +212,25 @@ _HIDHotkeysInputMsg(wParam, lParam) {
 	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
 	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
 	CHIDHotkeys._Instance.ProcessMessage(wParam, lParam)
+}
+
+; bind v1.1 by Lexikos
+; Requires test build of AHK? Will soon become part of AHK
+; See http://ahkscript.org/boards/viewtopic.php?f=24&t=5802
+bind(fn, args*) {  ; bind v1.1
+    try bound := fn.bind(args*)  ; Func.Bind() not yet implemented.
+    return bound ? bound : new BoundFunc(fn, args*)
+}
+
+class BoundFunc {
+    __New(fn, args*) {
+        this.fn := IsObject(fn) ? fn : Func(fn)
+        this.args := args
+    }
+    __Call(callee) {
+        if (callee = "" || callee = "call" || IsObject(callee)) {  ; IsObject allows use as a method.
+            fn := this.fn
+            return %fn%(this.args*)
+        }
+    }
 }
