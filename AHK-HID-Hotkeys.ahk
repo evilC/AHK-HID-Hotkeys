@@ -1,4 +1,42 @@
 #include <AHKHID>
+; AHKHID test script, included in main script for now for easy debugging =====================================================================================
+#SingleInstance force
+OnExit, GuiClose
+
+HKHandler := new CHIDHotkeys()
+
+fn := Bind("DownEvent", "a")
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modes: {passthru: 0}}, fn)
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
+
+c1 := new CMainClass()
+
+Return
+
+Esc::ExitApp
+GuiClose:
+ExitApp
+
+DownEvent(key){
+	;msgbox DOWNEVENT %key%
+	soundbeep
+}
+	
+Class CMainClass {
+	__New(){
+		global HKHandler
+		fn := Bind(this.DownEvent, this, "b")
+		this.hk1 := HKHandler.Add({ input: {type: "keyboard", key: "b"}}, fn)
+	}
+	
+	DownEvent(key){
+		;msgbox DOWNEVENT %key%
+		soundbeep
+	}
+}
+
+; Test script end ==============================
 
 ; Only ever instantiate once!
 Class CHIDHotkeys {
