@@ -10,10 +10,10 @@ global HH_TYPE_O := 2
 
 HKHandler := new CHIDHotkeys()
 
-fn := Bind("DownEvent", "a")
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: fn, modes: {passthru: 0}, event: 1})
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: "HighBeep", modes: {passthru: 0}, event: 1})
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")},{type: HH_TYPE_K, input: GetKeyVK("shift")}], callback: "LowBeep", modes: {passthru: 0}, event: 1})
 
-;c1 := new CMainClass()
+mc := new CMainClass()
 
 Return
 
@@ -21,20 +21,23 @@ Esc::ExitApp
 GuiClose:
 ExitApp
 
-DownEvent(key){
-	;msgbox DOWNEVENT %key%
-	soundbeep
+HighBeep(){
+	soundbeep, 1000, 250
 }
 	
+LowBeep(){
+	soundbeep, 500, 250
+}
+
+; Test functionality when callback bound to a class method
 Class CMainClass {
 	__New(){
 		global HKHandler
-		fn := Bind(this.DownEvent, this, "b")
-		HKHandler.Add({ input: {type: "keyboard", key: "b"}}, fn)
+		fn := Bind(this.DownEvent, this)
+		HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("b"), modifiers: [], callback: fn, modes: {passthru: 1}, event: 1})
 	}
 	
-	DownEvent(key){
-		;msgbox DOWNEVENT %key%
+	DownEvent(){
 		soundbeep
 	}
 }
@@ -67,16 +70,31 @@ Class CHIDHotkeys {
 	}
 	
 	_ProcessInput(data){
+		; ToDo:
+		; Wild (*) functionality
+		; Only match on full modifier match - ie binding of ^a without wild should not trigger on ^+a
 		if (data.type = HH_TYPE_K){
-			;vk := this.ToHex(data.input,2)
-			;KeyName := GetKeyName("vk" vk)
 			; Set _StateIndex to reflect state of key
-			this._StateIndex[HH_TYPE_K][data.input] := data.event
-			if (data.input = 0xA1 || data.input = 0xA2){
-				; L/R control
-				this._StateIndex[HH_TYPE_K][0x11] := data.event
+			if (data.input = 65){
+				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
 			}
-			; ToDo: Takes first match - Need to try and match modifiers first. Recursive function ?
+			this._StateIndex[HH_TYPE_K][data.input] := data.event
+			; If key has Left / Right variants (ie Modifiers), on event for variant, set state for common version (eg on LCtrl down, set Ctrl as down too)
+			if (data.input = 0xA0 || data.input = 0xA1){		; VK_LSHIFT || VK_RSHIFT
+				; L/R Shift
+				this._StateIndex[HH_TYPE_K][0x10] := data.event	; VK_SHIFT
+			} else if (data.input = 0xA2 || data.input = 0xA3){ ; VK_LCONTROL || VK_RCONTROL
+				; L/R control
+				this._StateIndex[HH_TYPE_K][0x11] := data.event	; VK_CONTROL
+			} else if (data.input = 0x5B || data.input = 0x5C){	; VK_LWIN || VK_RWIN
+				; L/R Win
+				this._StateIndex[HH_TYPE_K][0x5D] := data.event	; VK_APPS
+			} else if (data.input = 0xA4 || data.input = 0xA5){	; VK_LMENU || VK_RMENU
+				; L/R Alt
+				this._StateIndex[HH_TYPE_K][0x12] := data.event	; VK_MENU
+			}
+			; Find best match for binding
+			best_match := {binding: 0, modcount: 0}
 			Loop % this._Bindings.MaxIndex() {
 				b := A_Index
 				if (this._Bindings[b].type = data.type && this._Bindings[b].input = data.input && this._Bindings[b].event = data.event){
@@ -85,22 +103,38 @@ Class CHIDHotkeys {
 						max := 0
 					}
 					matched := 0
-					Loop % max {
-						m := A_Index
-						if (this._StateIndex[this._Bindings[b].modifiers[m].type][this._Bindings[b].modifiers[m].input]){
-							; Match
-							matched++
+
+					if (!ObjHasKey(this._Bindings[b].modifiers[1], "type")){
+						; If modifier array empty, match
+						max := 0
+						best_match.binding := b
+						best_match.modcount := 0
+					} else {
+						Loop % max {
+							m := A_Index
+							if (this._StateIndex[this._Bindings[b].modifiers[m].type][this._Bindings[b].modifiers[m].input]){
+								; Match on one modifier
+								matched++
+							}
 						}
 					}
 					if (matched = max){
-						; All modifiers matched
-						fn := this._Bindings[b].callback
-						fn.()
-						if (this._Bindings[b].modes.passthru = 0){
-							; Block
-							return 1
+						; All modifiers matched - we have a candidate
+						if (best_match.modcount < max){
+							; No best match so far, or there is a match but it uses less modifiers - this is current best match
+							best_match.binding := b
+							best_match.modcount := max
 						}
 					}
+				}
+			}
+			if (best_match.binding){
+				; A match was found, call
+				fn := this._Bindings[best_match.binding].callback
+				fn.()
+				if (this._Bindings[best_match.binding].modes.passthru = 0){
+					; Block
+					return 1
 				}
 			}
 		}
