@@ -86,7 +86,7 @@ Class CHIDHotkeys {
 		SetFormat, Integer, H
 		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
 		{
-			KeyName := GetKeyName("vk" NumGet(lParam+0, 0))
+			KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
 			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
 				Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
 				; Need to pass to function handling WM_INPUT, as it will not receive WM_INPUT message for this key, if the script is not the active app
@@ -273,7 +273,7 @@ Class CHIDHotkeys {
 	}
 	
 	_SetWindowsHookEx(idHook, pfn){
-		Return DllCall("SetWindowsHookEx", "int", idHook, "Uint", pfn, "Uint", DllCall("GetModuleHandle", "Uint", 0), "Uint", 0)
+		Return DllCall("SetWindowsHookEx", "int", idHook, "Uint", pfn, "Uint", DllCall("GetModuleHandle", "Uint", 0, "Ptr"), "Uint", 0, "Ptr")
 	}
 
 	_UnhookWindowsHookEx(hHook){
