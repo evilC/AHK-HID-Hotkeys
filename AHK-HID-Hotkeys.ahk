@@ -3,15 +3,17 @@
 #SingleInstance force
 OnExit, GuiClose
 
+; Input types. These match HID input types
+global HH_TYPE_M := 0
+global HH_TYPE_K := 1
+global HH_TYPE_O := 2
+
 HKHandler := new CHIDHotkeys()
 
 fn := Bind("DownEvent", "a")
-;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "control"}, modes: {passthru: 0}}, fn)
-hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}, modes: {passthru: 0}}, fn)
-hk1 := HKHandler.Add({ input: {type: "keyboard", key: "c"}, modes: {passthru: 0}}, fn)
-;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: fn, modes: {passthru: 0}, event: 1})
 
-c1 := new CMainClass()
+;c1 := new CMainClass()
 
 Return
 
@@ -28,7 +30,7 @@ Class CMainClass {
 	__New(){
 		global HKHandler
 		fn := Bind(this.DownEvent, this, "b")
-		this.hk1 := HKHandler.Add({ input: {type: "keyboard", key: "b"}}, fn)
+		HKHandler.Add({ input: {type: "keyboard", key: "b"}}, fn)
 	}
 	
 	DownEvent(key){
@@ -41,9 +43,13 @@ Class CMainClass {
 
 ; Only ever instantiate once!
 Class CHIDHotkeys {
-	_Bindings := {keyboard: {}, mouse: {}, other: {}}
-	_StateIndex := {keyboard: {}, mouse: {}, other: {}}
+	_Bindings := []
+	_StateIndex := []
 	__New(){
+		this._StateIndex := []
+		this._StateIndex[0] := {}
+		this._StateIndex[1] := {}
+		this._StateIndex[2] := {}
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
 		OnMessage(0x00FF, Bind(this._ProcessHID, this))
 		this._HIDRegister()
@@ -55,83 +61,62 @@ Class CHIDHotkeys {
 	}
 	
 	; Add a binding
-	Add(binding, callback){
-		return new this._Binding(this, binding, callback)
+	Add(obj){
+		;return new this._Binding(this,obj)
+		this._Bindings.Insert(obj)
 	}
 	
-	_ProcessInput(source, input, data){
-		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
-		if (source.type = RIM_TYPEKEYBOARD){
-			KeyName := GetKeyName("vk" this.ToHex(input.key,2))
+	_ProcessInput(data){
+		if (data.type = HH_TYPE_K){
+			;vk := this.ToHex(data.input,2)
+			;KeyName := GetKeyName("vk" vk)
 			; Set _StateIndex to reflect state of key
-			this._StateIndex.keyboard[input.key] := data
-			if (input.variant){
-				;Modifier key - set L or R version as down/up also
-				this._StateIndex.keyboard[input.variant] := data
+			this._StateIndex[HH_TYPE_K][data.input] := data.event
+			if (data.input = 0xA1 || data.input = 0xA2){
+				; L/R control
+				this._StateIndex[HH_TYPE_K][0x11] := data.event
 			}
-	
-			if (this._Bindings.keyboard[input.key].isbound){
-				max := 0
-				matched := 0
-				max := this._Bindings.keyboard[input.key].modifiers.MaxIndex()
-				Loop % max {
-					if (this._Bindings.keyboard[input.key].modifiers[A_Index].type = "keyboard"){
-						if (this._StateIndex.keyboard[this._Bindings.keyboard[input.key].modifiers[A_Index].key]){
+			; ToDo: Takes first match - Need to try and match modifiers first. Recursive function ?
+			Loop % this._Bindings.MaxIndex() {
+				b := A_Index
+				if (this._Bindings[b].type = data.type && this._Bindings[b].input = data.input && this._Bindings[b].event = data.event){
+					max := this._Bindings[b].modifiers.MaxIndex()
+					if (!max){	; convert "" to 0
+						max := 0
+					}
+					matched := 0
+					Loop % max {
+						m := A_Index
+						if (this._StateIndex[this._Bindings[b].modifiers[m].type][this._Bindings[b].modifiers[m].input]){
+							; Match
 							matched++
 						}
 					}
-				}
-				if (max = "" || matched = max){
-					; All modifiers satisfied
-					fn := this._Bindings.keyboard[input.key].callback
-					fn.()
-					if (this._Bindings.keyboard[input.key].modes.passthru = 0){
-						; Return 1 to block input
-						Tooltip BLOCK
-						return 1
+					if (matched = max){
+						; All modifiers matched
+						fn := this._Bindings[b].callback
+						fn.()
+						if (this._Bindings[b].modes.passthru = 0){
+							; Block
+							return 1
+						}
 					}
 				}
 			}
 		}
-		Tooltip
 		return 0
 	}
 
 	; Process Keyboard and Mouse messages from Hooks
 	_ProcessHook(nCode, wParam, lParam){
 		Critical
-		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
-		global II_MSE_BUTTONFLAGS
 		
-		flags := AHKHID_GetInputInfo(lParam, II_MSE_BUTTONFLAGS)
-		
-		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
-		{
-			;SetFormat, Integer, H
-			;KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
-			vk := NumGet(lParam+0, 0, "Uint")
-			keyobj := { key: vk, variant: 0 }
-			if (vk = 0xA1 || vk = 0xA2){
-				; L/R control
-				keyobj.key := 0x11
-				keyobj.variant := vk
-			} else if(0){
-				
+		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
+			if (this._ProcessInput({type: HH_TYPE_K, input: NumGet(lParam+0, 0, "Uint"), event: wParam = 0x100})){
+				; Return 1 to block this input
+				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
+				return 1
 			}
-			;SetFormat, IntegerFast, D
-			;if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
-				; This input needs to be blocked from apps / the OS as it is remapped
-				;Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
-				; Allow script to see the input so it can perform remapping
-				; force meta = 0 for now
-				;res := this._ProcessInput(RIM_TYPEKEYBOARD, 0, KeyName, wParam = 0x100)
-				res := this._ProcessInput({type: RIM_TYPEKEYBOARD}, keyobj, wParam = 0x100)
-				if (res){
-					; Return 1 to block this input
-					; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
-					return 1
-				}
-			;}
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
@@ -308,53 +293,6 @@ Class CHIDHotkeys {
 	 
 		;-- Assemble and return the final value
 		Return l_NegativeChar . "0x" . l_Buffer
-	}
-	
-	Class _Binding {
-		; Makes a Binding
-		/*
-		Either Ctrl + a (Down event is assumed)
-		{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}
-		
-		Left Ctrl + a (Down event is assumed)
-		{ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "lctrl"}}
-		
-		Hold a, hit b
-		{ input: {type: "keyboard", key: "b"}, modifiers: {type: "keyboard", key: "a"}}
-		
-		Ctrl+RButton
-		{ input: {type: "mouse_button", key: "rbutton"}, modifiers: {type: "keyboard", key: "ctrl"}}
-		
-		Ctrl + Joystick 1, Button 12
-		{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: {type: "keyboard", key: "ctrl"}}
-		
-		Ctrl + RButton + Joystick 1, Button 12
-		{ input: {type: "joystick_button", id: 1, key: "12"}, modifiers: [{type: "keyboard", key: "ctrl"}, {type: "mouse", key: "rbutton"}]
-		
-		Joystick 1, Axis 2
-		{ input: {type: "joystick_axis", id: 1, key: "2"}}
-		*/
-		__New(parent, binding, callback){
-			this._parent := parent
-			if (IsObject(!binding.input)){
-				return 0
-			}
-			; Force modifiers to be array
-			if (binding.modifiers != "" && !binding.modifiers.MaxIndex()){
-				binding.modifiers := [binding.modifiers]
-			}
-			; Convert modifier names into VKeys
-			Loop % binding.modifiers.MaxIndex(){
-				binding.modifiers[A_Index].key := GetKeyVK(binding.modifiers[A_Index].key)
-			}
-			; bindings.keyboard.a : {modifiers: [...]}
-			; bindings.joystick[1].1 : {modifiers: [...]}
-			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
-				this._parent._Bindings[binding.input.type][GetKeyVK(binding.input.key)] := {isbound: 1, callback: callback, modes: binding.modes, modifiers: binding.modifiers}
-				;this._parent._Bindings[binding.input.type][binding.input.key] := 1
-			}
-			return this
-		}
 	}
 	
 	_SetWindowsHookEx(idHook, pfn){
