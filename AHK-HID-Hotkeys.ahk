@@ -53,10 +53,12 @@ Class CHIDHotkeys {
 		CHIDHotkeys._Instance := ""	; remove reference to instantiated class from Class Definition
 	}
 	
+	; Add a binding
 	Add(binding, callback){
 		return new this._Binding(this, binding, callback)
 	}
 	
+	; Register with AHKHID
 	_HIDRegister(){
 		global RIDEV_INPUTSINK
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
@@ -82,21 +84,7 @@ Class CHIDHotkeys {
 
 	}
 	
-	_KeyboardHook(nCode, wParam, lParam){
-		SetFormat, Integer, H
-		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
-		{
-			KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
-			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
-				Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
-				; Need to pass to function handling WM_INPUT, as it will not receive WM_INPUT message for this key, if the script is not the active app
-				;this._ProcessMessage(wParam, lParam)
-				return 1
-			}
-		}
-		Return this._CallNextHookEx(nCode, wParam, lParam)
-	}
-	
+	; Unregister with AHKDID
 	_HIDUnRegister(){
 		global RIDEV_REMOVE
 		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
@@ -105,7 +93,43 @@ Class CHIDHotkeys {
 		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
 	}
 	
-	_ProcessMessage(wParam, lParam){
+	; Final stage of input processing. _ProcessHook and _ProcessHID both call this
+	; ALL INPUT MUST FLOW THROUGH HERE
+	; Type = RIM_TYPEMOUSE, RIM_TYPEKEYBOARD or RIM_TYPEHID (Joysticks)
+	; Key = Name of key or button (key, mouse) or object like {device: blah, axis: 2} for joysticks.
+	; Event = 0 (up) / 1 (down) for buttons, new value for axes
+	_ProcessInput(type, key, event){
+		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
+		if (type = RIM_TYPEKEYBOARD){
+			if (this._Bindings.keyboard[key].isbound){
+				fn := this._Bindings.keyboard[key].callback
+				fn.()
+			}
+		}
+	}
+
+	; Process messages from Hooks
+	_ProcessHook(nCode, wParam, lParam){
+		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID 
+		SetFormat, Integer, H
+		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
+		{
+			KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
+			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
+				; This input needs to be blocked from apps / the OS as it is remapped
+				Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
+				; Allow script to see the input so it can perform remapping
+				this._ProcessInput(RIM_TYPEKEYBOARD, KeyName, wParam = 0x100)
+				; Return 1 to block this input
+				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
+				return 1
+			}
+		}
+		Return this._CallNextHookEx(nCode, wParam, lParam)
+	}
+	
+	; Process messages from HID
+	_ProcessHID(wParam, lParam){
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
 		global II_DEVTYPE, II_KBD_FLAGS, II_MSE_BUTTONFLAGS, II_KBD_VKEY, II_KBD_MAKECODE
 		r := AHKHID_GetInputInfo(lParam, II_DEVTYPE)
@@ -173,11 +197,8 @@ Class CHIDHotkeys {
 					s := "Right "
 				}
 			}
+			this._ProcessInput(r, keyname, !flags)
 			s .= keyname
-			if (this._Bindings.keyboard[keyname].isbound){
-				fn := this._Bindings.keyboard[keyname].callback
-				fn.()
-			}
 			;Tooltip % "Keyboard: " s (flags ? " Up" : " Down")
 		} Else If (r = RIM_TYPEHID) {
 			
@@ -288,13 +309,13 @@ Class CHIDHotkeys {
 
 _HIDHotkeysKeyboardHook(nCode, wParam, lParam){
 	Critical
-	return CHIDHotkeys._Instance._KeyboardHook(nCode, wParam, lParam)
+	return CHIDHotkeys._Instance._ProcessHook(nCode, wParam, lParam)
 }
 
 _HIDHotkeysInputMsg(wParam, lParam) {
 	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
 	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
-	return CHIDHotkeys._Instance._ProcessMessage(wParam, lParam)
+	return CHIDHotkeys._Instance._ProcessHID(wParam, lParam)
 }
 
 ; bind v1.1 by Lexikos
