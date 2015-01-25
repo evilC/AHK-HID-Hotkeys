@@ -4,14 +4,15 @@
 [
 	{
 		// Just a
-		"type": 1,					// RIM_TYPEMOUSE = 0 || RIM_TYPEKEYBOARD = 1 || RIM_TYPEHID = 2
+		"type": 1,					// HH_TYPE_M = 0 || HH_TYPE_K = 1 || HH_TYPE_O = 2
 		"input": 65,				// VK code
 		"modifiers": [],			// modifiers, eg CTRL, ALT but could be anything (eg Joystick button)
 		"callback": "(callback)",	// Code to call on match
 		"modes": {					// Special conditions for binding
 			"passthru": 0,			// 0 = Block, 1 = Pass Through
 			"wild": 0				// 1 = works with any modifier (modifiers must be empty)
-		}
+		},
+		"event": 1					// 0 = down, 1 = up
 	},
 	{
 		// Either Ctrl + a
