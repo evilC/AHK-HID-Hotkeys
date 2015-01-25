@@ -1,5 +1,9 @@
 ;#include <AHKHID>
-; AHK-HID-Hotkeys test script, included in main script for now for easy debugging =====================================================================================
+/*
+ToDo:
+_StateIndex, _Bindings dynamic properties - set 0 on unset.
+
+*/
 #SingleInstance force
 OnExit, GuiClose
 
@@ -10,7 +14,7 @@ global HH_TYPE_O := 2
 
 HKHandler := new CHIDHotkeys()
 
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: "HighBeep", modes: {passthru: 0}, event: 1})
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: "HighBeep", modes: {passthru: 0, wild: 1}, event: 1})
 HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")},{type: HH_TYPE_K, input: GetKeyVK("shift")}], callback: "LowBeep", modes: {passthru: 0}, event: 1})
 
 mc := new CMainClass()
@@ -51,7 +55,7 @@ Class CHIDHotkeys {
 	__New(){
 		this._StateIndex := []
 		this._StateIndex[0] := {}
-		this._StateIndex[1] := {}
+		this._StateIndex[1] := {0x10: 0, 0x11: 0, 0x12: 0, 0x5D: 0}	; initialize modifier states
 		this._StateIndex[2] := {}
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
 		OnMessage(0x00FF, Bind(this._ProcessHID, this))
@@ -70,9 +74,6 @@ Class CHIDHotkeys {
 	}
 	
 	_ProcessInput(data){
-		; ToDo:
-		; Wild (*) functionality
-		; Only match on full modifier match - ie binding of ^a without wild should not trigger on ^+a
 		if (data.type = HH_TYPE_K){
 			; Set _StateIndex to reflect state of key
 			if (data.input = 65){
@@ -93,6 +94,8 @@ Class CHIDHotkeys {
 				; L/R Alt
 				this._StateIndex[HH_TYPE_K][0x12] := data.event	; VK_MENU
 			}
+			; find the total number of modifier keys currently held
+			modsheld := this._StateIndex[HH_TYPE_K][0x10] + this._StateIndex[HH_TYPE_K][0x11] + this._StateIndex[HH_TYPE_K][0x5D] + this._StateIndex[HH_TYPE_K][0x12]
 			; Find best match for binding
 			best_match := {binding: 0, modcount: 0}
 			Loop % this._Bindings.MaxIndex() {
@@ -121,13 +124,17 @@ Class CHIDHotkeys {
 					if (matched = max){
 						; All modifiers matched - we have a candidate
 						if (best_match.modcount < max){
-							; No best match so far, or there is a match but it uses less modifiers - this is current best match
-							best_match.binding := b
-							best_match.modcount := max
+							; If wild not set, check no other modifiers in addition to matched ones are set.
+							if ((modsheld = max) || this._Bindings[b].modes.wild = 1){
+								; No best match so far, or there is a match but it uses less modifiers - this is current best match
+								best_match.binding := b
+								best_match.modcount := max
+							}
 						}
 					}
 				}
 			}
+			
 			if (best_match.binding){
 				; A match was found, call
 				fn := this._Bindings[best_match.binding].callback
