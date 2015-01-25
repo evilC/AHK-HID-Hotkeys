@@ -142,7 +142,9 @@ Class CHIDHotkeys {
 			if (best_match.binding){
 				; A match was found, call
 				fn := this._Bindings[best_match.binding].callback
-				fn.()
+				; Start thread for bound func
+				SetTimer %fn%, -0
+				; Block if needed.
 				if (this._Bindings[best_match.binding].modes.passthru = 0){
 					; Block
 					return 1
