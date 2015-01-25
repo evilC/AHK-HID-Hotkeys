@@ -59,15 +59,16 @@ Class CHIDHotkeys {
 		this._StateIndex[0] := {}
 		this._StateIndex[1] := {0x10: 0, 0x11: 0, 0x12: 0, 0x5D: 0}	; initialize modifier states
 		this._StateIndex[2] := {}
-		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
-		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		fn := _BindCallback(this._ProcessHook,"Fast",,this)
+		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, fn)
+		
 		;OnMessage(0x00FF, Bind(this._ProcessHID, this))
 		;this._HIDRegister()
 	}
 	
 	__Delete(){
 		this._HIDUnRegister()
-		CHIDHotkeys._Instance := ""	; remove reference to instantiated class from Class Definition
 	}
 	
 	; Add a binding
@@ -355,11 +356,6 @@ Class CHIDHotkeys {
 
 }
 
-_HIDHotkeysKeyboardHook(nCode, wParam, lParam){
-	Critical
-	return CHIDHotkeys._Instance._ProcessHook(nCode, wParam, lParam)
-}
-
 ; bind by Lexikos
 ; Requires test build of AHK? Will soon become part of AHK
 ; See http://ahkscript.org/boards/viewtopic.php?f=24&t=5802
@@ -381,18 +377,27 @@ class BoundFunc {
     }
 }
 
-; RegisterBind by GeekDude
-class RegisterBind
+; _BindCallback by GeekDude
+_BindCallback(Params*)
 {
-	__New(Function, Params*)
-	{
-		this.Function := Function
-		this.Params := Params
-	}
- 
-	Callback()
-	{
-		this := Object(A_EventInfo)
-		this.Function.(this.Params*)
-	}
+    if IsObject(Params)
+    {
+        this := {}
+        this.Function := Params[1]
+        this.Options := Params[2]
+        this.ParamCount := Params[3]
+        Params.Remove(1, 3)
+        this.Params := Params
+        if (this.ParamCount == "")
+            this.ParamCount := IsFunc(this.Function)-1 - Floor(Params.MaxIndex())
+        return RegisterCallback(A_ThisFunc, this.Options, this.ParamCount, Object(this))
+    }
+    else
+    {
+        this := Object(A_EventInfo)
+        MyParams := [this.Params*]
+        Loop, % this.ParamCount
+            MyParams.Insert(NumGet(Params+0, (A_Index-1)*A_PtrSize))
+        return this.Function.(MyParams*)
+    }
 }
