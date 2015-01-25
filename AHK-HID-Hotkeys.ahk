@@ -60,6 +60,7 @@ Class CHIDHotkeys {
 	_HIDRegister(){
 		global RIDEV_INPUTSINK
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
+		static WH_CALLWNDPROC := 4, WH_GETMESSAGE := 3
 
 		; Register with HID
 		joysticks := {} ; disable for now
