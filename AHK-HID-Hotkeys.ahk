@@ -44,7 +44,7 @@ Class CHIDHotkeys {
 	_StateIndex := {keyboard: {}, mouse: {}, other: {}}
 	__New(){
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
-		OnMessage(0x00FF, "_HIDHotkeysInputMsg")
+		OnMessage(0x00FF, Bind(this._ProcessHID, this))
 		this._HIDRegister()
 	}
 	
@@ -110,6 +110,7 @@ Class CHIDHotkeys {
 
 	; Process messages from Hooks
 	_ProcessHook(nCode, wParam, lParam){
+		Critical
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID 
 		SetFormat, Integer, H
 		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
@@ -130,6 +131,7 @@ Class CHIDHotkeys {
 	
 	; Process messages from HID
 	_ProcessHID(wParam, lParam){
+		Critical
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
 		global II_DEVTYPE, II_KBD_FLAGS, II_MSE_BUTTONFLAGS, II_KBD_VKEY, II_KBD_MAKECODE
 		r := AHKHID_GetInputInfo(lParam, II_DEVTYPE)
@@ -312,16 +314,10 @@ _HIDHotkeysKeyboardHook(nCode, wParam, lParam){
 	return CHIDHotkeys._Instance._ProcessHook(nCode, wParam, lParam)
 }
 
-_HIDHotkeysInputMsg(wParam, lParam) {
-	; Re-route messages into the class (Lex says he will be enhancing AHK to let OnMessage call a class method so this can go at some point)
-	Critical    ;Or otherwise you could get ERROR_INVALID_HANDLE
-	return CHIDHotkeys._Instance._ProcessHID(wParam, lParam)
-}
-
-; bind v1.1 by Lexikos
+; bind by Lexikos
 ; Requires test build of AHK? Will soon become part of AHK
 ; See http://ahkscript.org/boards/viewtopic.php?f=24&t=5802
-bind(fn, args*) {  ; bind v1.1
+bind(fn, args*) {  ; bind v1.2
     try bound := fn.bind(args*)  ; Func.Bind() not yet implemented.
     return bound ? bound : new BoundFunc(fn, args*)
 }
@@ -331,11 +327,10 @@ class BoundFunc {
         this.fn := IsObject(fn) ? fn : Func(fn)
         this.args := args
     }
-    __Call(callee) {
+    __Call(callee, args*) {
         if (callee = "" || callee = "call" || IsObject(callee)) {  ; IsObject allows use as a method.
-            fn := this.fn
-            return %fn%(this.args*)
+            fn := this.fn, args.Insert(1, this.args*)
+            return %fn%(args*)
         }
     }
 }
-
