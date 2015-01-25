@@ -6,8 +6,8 @@ OnExit, GuiClose
 HKHandler := new CHIDHotkeys()
 
 fn := Bind("DownEvent", "a")
-;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}}, fn)
-hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modes: {passthru: 0}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "control"}, modes: {passthru: 0}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "c"}, modes: {passthru: 0}}, fn)
 ;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
 
 c1 := new CMainClass()
@@ -80,6 +80,9 @@ Class CHIDHotkeys {
 		
 		; Register global hooks
 		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		;bound := new RegisterBind(this._ProcessHook, this)
+		;addr := new Onject(bound)
+		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback(bound.Callback,,, addr))
 		;this._hHookMouse := SetWindowsHookEx(WH_MOUSE_LL, RegisterCallback("MouseMove", "Fast"))
 
 	}
@@ -96,35 +99,90 @@ Class CHIDHotkeys {
 	; Final stage of input processing. _ProcessHook and _ProcessHID both call this
 	; ALL INPUT MUST FLOW THROUGH HERE
 	; Type = RIM_TYPEMOUSE, RIM_TYPEKEYBOARD or RIM_TYPEHID (Joysticks)
-	; Key = Name of key or button (key, mouse) or object like {device: blah, axis: 2} for joysticks.
-	; Event = 0 (up) / 1 (down) for buttons, new value for axes
-	_ProcessInput(type, key, event){
+	; input_meta = meta-info about input.
+	; 	Keyboard: l (left modifier), r (right modifier) or 0 (not a modifier)
+	;	Mouse: Always 0
+	; 	Joystick: Stick ID
+	; input_code: The input that happened.
+	; 	Keyboard: VK
+	; 	Mouse: 
+	; 	Joystick: Axis or Button # ?
+	; Event
+	;   Keyboard / Mouse / Joystick Button: = 0 (up) / 1 (down)
+	; 	Joystick: Axis Value
+	
+	; FATAL FLAW in code:
+	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
+	
+	_ProcessInput(type, input_meta, input_code, event){
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
+		;SetFormat, Integer, H
+		;KeyName := GetKeyName("vk" NumGet(input_code+0, 0, "Uint"))
+		keyname := GetKeyName("vk" this.ToHex(input_code,2))
+		;SetFormat, IntegerFast, D
 		if (type = RIM_TYPEKEYBOARD){
-			if (this._Bindings.keyboard[key].isbound){
-				fn := this._Bindings.keyboard[key].callback
-				fn.()
+			;keyname := GetKeyName("vk" this.ToHex(input_code,2))
+			; Set _StateIndex to reflect state of key
+			this._StateIndex.keyboard[KeyName] := event
+			if (input_meta){
+				;Modifier key - set L or R version as down/up also
+				this._StateIndex.keyboard[input_meta KeyName] := event
+			}
+	
+			if (this._Bindings.keyboard[KeyName].isbound){
+				max := 0
+				matched := 0
+				max := this._Bindings.keyboard[KeyName].modifiers.MaxIndex()
+				Loop % max {
+					if (this._Bindings.keyboard[KeyName].modifiers[A_Index].type = "keyboard"){
+						if (this._StateIndex.keyboard[this._Bindings.keyboard[KeyName].modifiers[A_Index].key]){
+							matched++
+						}
+					}
+				}
+				if (max = "" || matched = max){
+					; All modifiers satisfied
+					fn := this._Bindings.keyboard[KeyName].callback
+					fn.()
+					if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
+						; Return 1 to block input
+						Tooltip BLOCK
+						return 1
+					}
+				}
 			}
 		}
+		Tooltip
+		return 0
 	}
 
 	; Process messages from Hooks
 	_ProcessHook(nCode, wParam, lParam){
 		Critical
-		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID 
-		SetFormat, Integer, H
+		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
+		global II_MSE_BUTTONFLAGS
+		
+		flags := AHKHID_GetInputInfo(lParam, II_MSE_BUTTONFLAGS)
+		
 		If ((wParam = 0x100) || (wParam = 0x101))  ;   ; WM_KEYDOWN || WM_KEYUP
 		{
-			KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
-			if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
+			;SetFormat, Integer, H
+			;KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
+			vk := NumGet(lParam+0, 0, "Uint")
+			;SetFormat, IntegerFast, D
+			;if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
 				; This input needs to be blocked from apps / the OS as it is remapped
-				Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
+				;Tooltip, % "KBHook: Blocking " ((wParam = 0x100) ? KeyName " Down" :	KeyName " Up")
 				; Allow script to see the input so it can perform remapping
-				this._ProcessInput(RIM_TYPEKEYBOARD, KeyName, wParam = 0x100)
-				; Return 1 to block this input
-				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
-				return 1
-			}
+				; force meta = 0 for now
+				;res := this._ProcessInput(RIM_TYPEKEYBOARD, 0, KeyName, wParam = 0x100)
+				res := this._ProcessInput(RIM_TYPEKEYBOARD, 0, vk, wParam = 0x100)
+				if (res){
+					; Return 1 to block this input
+					; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
+					return 1
+				}
+			;}
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
@@ -152,18 +210,18 @@ Class CHIDHotkeys {
 		} Else If (r = RIM_TYPEKEYBOARD) {
 			; Keyboard Input
 			vk := AHKHID_GetInputInfo(lParam, II_KBD_VKEY)
-			keyname := GetKeyName("vk" this.ToHex(vk,2))
+			;keyname := GetKeyName("vk" this.ToHex(vk,2))
 			flags := AHKHID_GetInputInfo(lParam, II_KBD_FLAGS)
 			makecode := AHKHID_GetInputInfo(lParam, II_KBD_MAKECODE)
-			s := ""
+			meta := 0
 			if (vk == 17) {
 				; Control
 				if (flags < 2){
 					; LControl
-					s := "Left "
+					meta := "L"
 				} else {
 					; RControl
-					s := "Right "
+					meta := "R"
 					flags -= 2
 				
 				}
@@ -172,10 +230,10 @@ Class CHIDHotkeys {
 				; Alt
 				if (flags < 2){
 					; LAlt
-					s := "Left "
+					meta := "L"
 				} else {
 					; RAlt
-					s := "Right "
+					meta := "R"
 					flags -= 3	; RALT REPORTS DIFFERENTLY!
 				
 				}
@@ -183,24 +241,24 @@ Class CHIDHotkeys {
 				; Shift
 				if (makecode == 42){
 					; LShift
-					s := "Left "
+					meta := "L"
 				} else {
 					; RShift
-					s := "Right "
+					meta := "R"
 				}
 			} else if (vk == 91 || vk == 92) {
 				; Windows key
 				flags -= 2
 				if (makecode == 91){
 					; LWin
-					s := "Left "
+					meta := "L"
 				} else {
 					; RWin
-					s := "Right "
+					meta := "R"
 				}
 			}
-			this._ProcessInput(r, keyname, !flags)
-			s .= keyname
+			;this._ProcessInput(r, prefix keyname, !flags)
+			return this._ProcessInput(r, meta, vk, !flags)
 			;Tooltip % "Keyboard: " s (flags ? " Up" : " Down")
 		} Else If (r = RIM_TYPEHID) {
 			
@@ -277,19 +335,14 @@ Class CHIDHotkeys {
 				return 0
 			}
 			; Force modifiers to be array
-			if (!binding.modifiers.MaxIndex()){
+			if (binding.modifiers != "" && !binding.modifiers.MaxIndex()){
 				binding.modifiers := [binding.modifiers]
 			}
 			; bindings.keyboard.a : {modifiers: [...]}
 			; bindings.joystick[1].1 : {modifiers: [...]}
 			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
-				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback, modes: binding.modes}
+				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback, modes: binding.modes, modifiers: binding.modifiers}
 				;this._parent._Bindings[binding.input.type][binding.input.key] := 1
-			}
-			; binding.input is the "End" key that can fire the binding
-			; binding.modifiers is an object (or array of objects) specifiying keys that also need to be held for the binding to fire
-			Loop % binding.modifiers.MaxIndex() {
-				
 			}
 			return this
 		}
@@ -333,4 +386,20 @@ class BoundFunc {
             return %fn%(args*)
         }
     }
+}
+
+; RegisterBind by GeekDude
+class RegisterBind
+{
+	__New(Function, Params*)
+	{
+		this.Function := Function
+		this.Params := Params
+	}
+ 
+	Callback()
+	{
+		this := Object(A_EventInfo)
+		this.Function.(this.Params*)
+	}
 }
