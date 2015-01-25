@@ -53,13 +53,16 @@ Class CHIDHotkeys {
 	_Bindings := []
 	_StateIndex := []
 	__New(){
+		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
+		
 		this._StateIndex := []
 		this._StateIndex[0] := {}
 		this._StateIndex[1] := {0x10: 0, 0x11: 0, 0x12: 0, 0x5D: 0}	; initialize modifier states
 		this._StateIndex[2] := {}
 		CHIDHotkeys._Instance := this	; store reference to instantiated class in Class Definition, so non-class functions can find the instance.
-		OnMessage(0x00FF, Bind(this._ProcessHID, this))
-		this._HIDRegister()
+		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		;OnMessage(0x00FF, Bind(this._ProcessHID, this))
+		;this._HIDRegister()
 	}
 	
 	__Delete(){
@@ -162,6 +165,7 @@ Class CHIDHotkeys {
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
 	
+	/*
 	; Process Joystick messages from HID
 	_ProcessHID(wParam, lParam){
 		Critical
@@ -239,7 +243,7 @@ Class CHIDHotkeys {
 			
 		}
 	}
-
+	
 	; Register with AHKHID
 	_HIDRegister(){
 		global RIDEV_INPUTSINK
@@ -295,6 +299,7 @@ Class CHIDHotkeys {
 	
 	; FATAL FLAW in code:
 	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
+	*/
 
 	; converts to hex, pads to 4 digits, chops off 0x
 	ToHex(dec, padding := 4){
