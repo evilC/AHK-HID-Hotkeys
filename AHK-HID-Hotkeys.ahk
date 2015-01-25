@@ -1,12 +1,13 @@
-#include <AHKHID>
-; AHKHID test script, included in main script for now for easy debugging =====================================================================================
+;#include <AHKHID>
+; AHK-HID-Hotkeys test script, included in main script for now for easy debugging =====================================================================================
 #SingleInstance force
 OnExit, GuiClose
 
 HKHandler := new CHIDHotkeys()
 
 fn := Bind("DownEvent", "a")
-hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "control"}, modes: {passthru: 0}}, fn)
+;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "control"}, modes: {passthru: 0}}, fn)
+hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}, modifiers: {type: "keyboard", key: "ctrl"}, modes: {passthru: 0}}, fn)
 hk1 := HKHandler.Add({ input: {type: "keyboard", key: "c"}, modes: {passthru: 0}}, fn)
 ;hk1 := HKHandler.Add({ input: {type: "keyboard", key: "a"}}, fn)
 
@@ -58,93 +59,33 @@ Class CHIDHotkeys {
 		return new this._Binding(this, binding, callback)
 	}
 	
-	; Register with AHKHID
-	_HIDRegister(){
-		global RIDEV_INPUTSINK
-		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
-		static WH_CALLWNDPROC := 4, WH_GETMESSAGE := 3
-
-		; Register with HID
-		joysticks := {} ; disable for now
-		count := 0
-		for key, value in joysticks {
-			count++
-		}
-		AHKHID_AddRegister(2 + count)
-		AHKHID_AddRegister(1,2,A_ScriptHwnd,RIDEV_INPUTSINK)
-		AHKHID_AddRegister(1,6,A_ScriptHwnd,RIDEV_INPUTSINK)
-		for name, obj in joysticks {
-			AHKHID_AddRegister(obj.page, obj.usage, A_ScriptHwnd, RIDEV_INPUTSINK)
-		}
-		AHKHID_Register()
-		
-		; Register global hooks
-		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
-		;bound := new RegisterBind(this._ProcessHook, this)
-		;addr := new Onject(bound)
-		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback(bound.Callback,,, addr))
-		;this._hHookMouse := SetWindowsHookEx(WH_MOUSE_LL, RegisterCallback("MouseMove", "Fast"))
-
-	}
-	
-	; Unregister with AHKDID
-	_HIDUnRegister(){
-		global RIDEV_REMOVE
-		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
-		this._UnhookWindowsHookEx(this._hHookKeybd)
-		this._UnhookWindowsHookEx(this._hHookMouse)
-		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
-	}
-	
-	; Final stage of input processing. _ProcessHook and _ProcessHID both call this
-	; ALL INPUT MUST FLOW THROUGH HERE
-	; Type = RIM_TYPEMOUSE, RIM_TYPEKEYBOARD or RIM_TYPEHID (Joysticks)
-	; input_meta = meta-info about input.
-	; 	Keyboard: l (left modifier), r (right modifier) or 0 (not a modifier)
-	;	Mouse: Always 0
-	; 	Joystick: Stick ID
-	; input_code: The input that happened.
-	; 	Keyboard: VK
-	; 	Mouse: 
-	; 	Joystick: Axis or Button # ?
-	; Event
-	;   Keyboard / Mouse / Joystick Button: = 0 (up) / 1 (down)
-	; 	Joystick: Axis Value
-	
-	; FATAL FLAW in code:
-	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
-	
-	_ProcessInput(type, input_meta, input_code, event){
+	_ProcessInput(source, input, data){
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
-		;SetFormat, Integer, H
-		;KeyName := GetKeyName("vk" NumGet(input_code+0, 0, "Uint"))
-		keyname := GetKeyName("vk" this.ToHex(input_code,2))
-		;SetFormat, IntegerFast, D
-		if (type = RIM_TYPEKEYBOARD){
-			;keyname := GetKeyName("vk" this.ToHex(input_code,2))
+		if (source.type = RIM_TYPEKEYBOARD){
+			KeyName := GetKeyName("vk" this.ToHex(input.key,2))
 			; Set _StateIndex to reflect state of key
-			this._StateIndex.keyboard[KeyName] := event
-			if (input_meta){
+			this._StateIndex.keyboard[input.key] := data
+			if (input.variant){
 				;Modifier key - set L or R version as down/up also
-				this._StateIndex.keyboard[input_meta KeyName] := event
+				this._StateIndex.keyboard[input.variant] := data
 			}
 	
-			if (this._Bindings.keyboard[KeyName].isbound){
+			if (this._Bindings.keyboard[input.key].isbound){
 				max := 0
 				matched := 0
-				max := this._Bindings.keyboard[KeyName].modifiers.MaxIndex()
+				max := this._Bindings.keyboard[input.key].modifiers.MaxIndex()
 				Loop % max {
-					if (this._Bindings.keyboard[KeyName].modifiers[A_Index].type = "keyboard"){
-						if (this._StateIndex.keyboard[this._Bindings.keyboard[KeyName].modifiers[A_Index].key]){
+					if (this._Bindings.keyboard[input.key].modifiers[A_Index].type = "keyboard"){
+						if (this._StateIndex.keyboard[this._Bindings.keyboard[input.key].modifiers[A_Index].key]){
 							matched++
 						}
 					}
 				}
 				if (max = "" || matched = max){
 					; All modifiers satisfied
-					fn := this._Bindings.keyboard[KeyName].callback
+					fn := this._Bindings.keyboard[input.key].callback
 					fn.()
-					if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
+					if (this._Bindings.keyboard[input.key].modes.passthru = 0){
 						; Return 1 to block input
 						Tooltip BLOCK
 						return 1
@@ -156,7 +97,7 @@ Class CHIDHotkeys {
 		return 0
 	}
 
-	; Process messages from Hooks
+	; Process Keyboard and Mouse messages from Hooks
 	_ProcessHook(nCode, wParam, lParam){
 		Critical
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
@@ -169,6 +110,14 @@ Class CHIDHotkeys {
 			;SetFormat, Integer, H
 			;KeyName := GetKeyName("vk" NumGet(lParam+0, 0, "Uint"))
 			vk := NumGet(lParam+0, 0, "Uint")
+			keyobj := { key: vk, variant: 0 }
+			if (vk = 0xA1 || vk = 0xA2){
+				; L/R control
+				keyobj.key := 0x11
+				keyobj.variant := vk
+			} else if(0){
+				
+			}
 			;SetFormat, IntegerFast, D
 			;if (this._Bindings.keyboard[KeyName].modes.passthru = 0){
 				; This input needs to be blocked from apps / the OS as it is remapped
@@ -176,7 +125,7 @@ Class CHIDHotkeys {
 				; Allow script to see the input so it can perform remapping
 				; force meta = 0 for now
 				;res := this._ProcessInput(RIM_TYPEKEYBOARD, 0, KeyName, wParam = 0x100)
-				res := this._ProcessInput(RIM_TYPEKEYBOARD, 0, vk, wParam = 0x100)
+				res := this._ProcessInput({type: RIM_TYPEKEYBOARD}, keyobj, wParam = 0x100)
 				if (res){
 					; Return 1 to block this input
 					; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
@@ -187,7 +136,7 @@ Class CHIDHotkeys {
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
 	
-	; Process messages from HID
+	; Process Joystick messages from HID
 	_ProcessHID(wParam, lParam){
 		Critical
 		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
@@ -264,7 +213,63 @@ Class CHIDHotkeys {
 			
 		}
 	}
+
+	; Register with AHKHID
+	_HIDRegister(){
+		global RIDEV_INPUTSINK
+		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
+		static WH_CALLWNDPROC := 4, WH_GETMESSAGE := 3
+
+		; Register with HID
+		joysticks := {} ; disable for now
+		count := 0
+		for key, value in joysticks {
+			count++
+		}
+		;AHKHID_AddRegister(2 + count)
+		;AHKHID_AddRegister(1,2,A_ScriptHwnd,RIDEV_INPUTSINK)
+		;AHKHID_AddRegister(1,6,A_ScriptHwnd,RIDEV_INPUTSINK)
+		;for name, obj in joysticks {
+		;	AHKHID_AddRegister(obj.page, obj.usage, A_ScriptHwnd, RIDEV_INPUTSINK)
+		;}
+		;AHKHID_Register()
+		
+		; Register global hooks
+		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
+		;bound := new RegisterBind(this._ProcessHook, this)
+		;addr := new Onject(bound)
+		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback(bound.Callback,,, addr))
+		;this._hHookMouse := SetWindowsHookEx(WH_MOUSE_LL, RegisterCallback("MouseMove", "Fast"))
+
+	}
 	
+	; Unregister with AHKDID
+	_HIDUnRegister(){
+		global RIDEV_REMOVE
+		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
+		this._UnhookWindowsHookEx(this._hHookKeybd)
+		this._UnhookWindowsHookEx(this._hHookMouse)
+		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
+	}
+	
+	; Final stage of input processing. _ProcessHook and _ProcessHID both call this
+	; ALL INPUT MUST FLOW THROUGH HERE
+	; Type = RIM_TYPEMOUSE, RIM_TYPEKEYBOARD or RIM_TYPEHID (Joysticks)
+	; input_meta = meta-info about input.
+	; 	Keyboard: l (left modifier), r (right modifier) or 0 (not a modifier)
+	;	Mouse: Always 0
+	; 	Joystick: Stick ID
+	; input_code: The input that happened.
+	; 	Keyboard: VK
+	; 	Mouse: 
+	; 	Joystick: Axis or Button # ?
+	; Event
+	;   Keyboard / Mouse / Joystick Button: = 0 (up) / 1 (down)
+	; 	Joystick: Axis Value
+	
+	; FATAL FLAW in code:
+	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
+
 	; converts to hex, pads to 4 digits, chops off 0x
 	ToHex(dec, padding := 4){
 		return Substr(this.Convert2Hex(dec,padding),3)
@@ -338,10 +343,14 @@ Class CHIDHotkeys {
 			if (binding.modifiers != "" && !binding.modifiers.MaxIndex()){
 				binding.modifiers := [binding.modifiers]
 			}
+			; Convert modifier names into VKeys
+			Loop % binding.modifiers.MaxIndex(){
+				binding.modifiers[A_Index].key := GetKeyVK(binding.modifiers[A_Index].key)
+			}
 			; bindings.keyboard.a : {modifiers: [...]}
 			; bindings.joystick[1].1 : {modifiers: [...]}
 			if (binding.input.type = "keyboard" || binding.input.type = "mouse"){
-				this._parent._Bindings[binding.input.type][binding.input.key] := {isbound: 1, callback: callback, modes: binding.modes, modifiers: binding.modifiers}
+				this._parent._Bindings[binding.input.type][GetKeyVK(binding.input.key)] := {isbound: 1, callback: callback, modes: binding.modes, modifiers: binding.modifiers}
 				;this._parent._Bindings[binding.input.type][binding.input.key] := 1
 			}
 			return this
