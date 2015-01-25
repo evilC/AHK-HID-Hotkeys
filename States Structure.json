@@ -1,0 +1,8 @@
+// Object schema for States
+// Holds current state of inputs
+// View using JSONedit: http://tomeko.net/software/JSONedit/
+[
+	"type": 1,				// RIM_TYPEMOUSE = 0 || RIM_TYPEKEYBOARD = 1 || RIM_TYPEHID = 2
+	"input": 65				// a
+	"state": 1				// 0 = Up, 1 = Down
+]

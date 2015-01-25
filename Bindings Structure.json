@@ -1,0 +1,52 @@
+// Object schema for Bindings
+// Holds database of bound inputs and thier callbacks
+// View using JSONedit: http://tomeko.net/software/JSONedit/
+[
+	{
+		// Just a
+		"type": 1,				// RIM_TYPEMOUSE = 0 || RIM_TYPEKEYBOARD = 1 || RIM_TYPEHID = 2
+		"input": 65,			// VK code
+		"modifiers": [],
+		"callback": "(callback)"
+	},
+	{
+		// Either Ctrl + a
+		"type": 1,
+		"input": 65,			// a
+		"modifiers": [
+			{
+				"type": 1,
+				"input": 17		// Ctrl 
+			}
+		],
+		"callback": "(callback)"
+	},
+	{
+		// Left Ctrl + a
+		"type": 1,
+		"input": 65,
+		"modifiers": [
+			{
+				"type": 1,
+				"input": 162	// LCtrl 
+			}
+		],
+		"callback": "(callback)"
+	},
+	{
+		// Ctrl + Shift + a
+		"type": 1,
+		"input": 65,
+		"modifiers": [
+			{
+				"type": 1,
+				"input": 17		// Ctrl 
+			},
+			{
+				"type": 1,
+				"input": 16		// Shift
+			}
+		],
+		"callback": "(callback)"
+	}
+]
