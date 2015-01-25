@@ -4,10 +4,14 @@
 [
 	{
 		// Just a
-		"type": 1,				// RIM_TYPEMOUSE = 0 || RIM_TYPEKEYBOARD = 1 || RIM_TYPEHID = 2
-		"input": 65,			// VK code
-		"modifiers": [],
-		"callback": "(callback)"
+		"type": 1,					// RIM_TYPEMOUSE = 0 || RIM_TYPEKEYBOARD = 1 || RIM_TYPEHID = 2
+		"input": 65,				// VK code
+		"modifiers": [],			// modifiers, eg CTRL, ALT but could be anything (eg Joystick button)
+		"callback": "(callback)",	// Code to call on match
+		"modes": {					// Special conditions for binding
+			"passthru": 0,			// 0 = Block, 1 = Pass Through
+			"wild": 0				// 1 = works with any modifier (modifiers must be empty)
+		}
 	},
 	{
 		// Either Ctrl + a
@@ -19,7 +23,8 @@
 				"input": 17		// Ctrl 
 			}
 		],
-		"callback": "(callback)"
+		"callback": "(callback)",
+		"modes": {}
 	},
 	{
 		// Left Ctrl + a
@@ -31,7 +36,8 @@
 				"input": 162	// LCtrl 
 			}
 		],
-		"callback": "(callback)"
+		"callback": "(callback)",
+		"modes": {}
 	},
 	{
 		// Ctrl + Shift + a
@@ -47,6 +53,7 @@
 				"input": 16		// Shift
 			}
 		],
-		"callback": "(callback)"
+		"callback": "(callback)",
+		"modes": {}
 	}
 ]
