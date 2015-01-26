@@ -52,6 +52,8 @@ Class CMainClass {
 Class CHIDHotkeys {
 	_Bindings := []
 	_StateIndex := []
+	_MAPVK_VSC_TO_VK := {}	; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
+	
 	__New(){
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
 		
@@ -80,24 +82,17 @@ Class CHIDHotkeys {
 	_ProcessInput(data){
 		if (data.type = HH_TYPE_K){
 			; Set _StateIndex to reflect state of key
-			if (data.input.vk = 65){
+			; lr_variant := data.input.flags & 1	; is this the left (0) or right (1) version of this key?
+			if (a.input.vk = 65 || data.input.flags){
 				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
 			}
-			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
-			; If key has Left / Right variants (ie Modifiers), on event for variant, set state for common version (eg on LCtrl down, set Ctrl as down too)
-			if (data.input.vk = 0xA0 || data.input.vk = 0xA1){		; VK_LSHIFT || VK_RSHIFT
-				; L/R Shift
-				this._StateIndex[HH_TYPE_K][0x10] := data.event	; VK_SHIFT
-			} else if (data.input.vk = 0xA2 || data.input.vk = 0xA3){ ; VK_LCONTROL || VK_RCONTROL
-				; L/R control
-				this._StateIndex[HH_TYPE_K][0x11] := data.event	; VK_CONTROL
-			} else if (data.input.vk = 0x5B || data.input.vk = 0x5C){	; VK_LWIN || VK_RWIN
-				; L/R Win
-				this._StateIndex[HH_TYPE_K][0x5D] := data.event	; VK_APPS
-			} else if (data.input.vk = 0xA4 || data.input.vk = 0xA5){	; VK_LMENU || VK_RMENU
-				; L/R Alt
-				this._StateIndex[HH_TYPE_K][0x12] := data.event	; VK_MENU
+			; Update _StateIndex array
+			translated_vk := this._MapVirtualKeyEx(data.input.sc)
+			if (translated_vk != data.input.vk){
+				; Has a left / right variant
+				this._StateIndex[HH_TYPE_K][translated_vk] := data.event
 			}
+			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
 			; find the total number of modifier keys currently held
 			modsheld := this._StateIndex[HH_TYPE_K][0x10] + this._StateIndex[HH_TYPE_K][0x11] + this._StateIndex[HH_TYPE_K][0x5D] + this._StateIndex[HH_TYPE_K][0x12]
 			; Find best match for binding
@@ -159,7 +154,7 @@ Class CHIDHotkeys {
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
-			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flg: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
+			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flags: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
@@ -356,6 +351,28 @@ Class CHIDHotkeys {
 		Return DllCall("CallNextHookEx", "Uint", hHook, "int", nCode, "Uint", wParam, "Uint", lParam)
 	}
 
+	; https://msdn.microsoft.com/en-us/library/windows/desktop/ms646307(v=vs.85).aspx
+	; scan code is translated into a virtual-key code that does not distinguish between left- and right-hand keys
+	_MapVirtualKeyEx(nCode){
+		static uMapType := 1 ; (MAPVK_VSC_TO_VK)
+		; Get locale
+		static dwhkl := DllCall("GetKeyboardLayout", "uint", 0)
+		
+		;if (uMapType = 1){
+			; Check cache
+			if (!this._MAPVK_VSC_TO_VK[nCode]){
+				; Populate cache
+				ret := DllCall("MapVirtualKeyEx", "Uint", nCode, "Uint", uMapType, "Ptr", dwhkl, "Uint")
+				if (ret = ""){
+					ret := 0
+				}
+				this._MAPVK_VSC_TO_VK[nCode] := ret
+				; Return result
+				return this._MAPVK_VSC_TO_VK[nCode]
+			}
+		;}
+
+	}
 }
 
 ; bind by Lexikos
