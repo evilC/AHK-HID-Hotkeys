@@ -96,7 +96,6 @@ Class CHIDHotkeys {
 	_BindingDetected(data){
 		AsynchBeep(2000)
 		
-		this._BindMode := 0
 		Gui, % this._BindPrompt ":Destroy"
 		return
 	}
@@ -139,6 +138,15 @@ Class CHIDHotkeys {
 				this._StateIndex[HH_TYPE_K][translated_vk] := data.event
 			}
 			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
+			
+			; Exit bind Mode here, so we can be sure all input generated during Bind Mode is blocked, where possible.
+			; ToDo data.event will not suffice for sticks?
+			if (this._BindMode && !data.event){
+				this._BindMode := 0
+				return 1
+			}
+
+			
 			; find the total number of modifier keys currently held
 			modsheld := this._StateIndex[HH_TYPE_K][0x10] + this._StateIndex[HH_TYPE_K][0x11] + this._StateIndex[HH_TYPE_K][0x5D] + this._StateIndex[HH_TYPE_K][0x12]
 			; Find best match for binding
@@ -180,6 +188,7 @@ Class CHIDHotkeys {
 				}
 			}
 			
+			; Decide whether to fire callback
 			if (best_match.binding){
 				; A match was found, call
 				fn := this._Bindings[best_match.binding].callback
