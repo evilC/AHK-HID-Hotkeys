@@ -1,11 +1,16 @@
 A collection of numbers to help me debug etc.
 
 VKs
-Hex Dec Key
-0x11 17 Control
-0xA2 162 Lctrl
-0xA3 163 RCtrl
+Hex 	Dec	Key
+0x10	16 	Shift
+0x11	17 	Control
+     	65	A
+
+0xA0	160 	LShift
+0xA1 	161 	RShift
+0xA2 	162 	Lctrl
+0xA3 	163 	RCtrl
 
 SCs
-Dec Key
-29 Lctrl
+Dec 	Key
+29 	Lctrl

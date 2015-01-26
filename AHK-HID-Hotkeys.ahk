@@ -30,6 +30,7 @@ HKHandler.Bind("BindingDetected")
 
 Return
 
+; Test Bind ended
 BindingDetected(binding){
 	a := 1	; debugging point
 }
@@ -71,6 +72,8 @@ Class CHIDHotkeys {
 	_StateIndex := []			; State of inputs as of last event
 	_BindModeCallback := 0		; Callback for BindMode
 	_MAPVK_VSC_TO_VK := {}		; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
+	_MAPVK_VK_TO_VSC := {}		; Lookup table for going the other way
+	_MapTypes := { 0:"_MAPVK_VK_TO_VSC", 1:"_MAPVK_VSC_TO_VK", 2:"_MAPVK_VK_TO_CHAR", 3:"_MAPVK_VSC_TO_VK_EX", 4:"_MAPVK_VK_TO_VSC_EX" }
 
 	; USER METHODS ================================================================================================================================
 	; Stuff intended for everyday use by people using the class.
@@ -92,6 +95,38 @@ Class CHIDHotkeys {
 		this._DetectBinding()
 		return 1
 	}
+	
+	; Adds the "common variant" (eg Ctrl) to ONE left/right variant (eg LCtrl) in a State object
+	; ScanCode as input
+	StateObjAddCommonVariant(obj, state, vk, sc := 0){
+		translated_vk := this._MapVirtualKeyEx(sc)
+		if ( translated_vk && (translated_vk != vk) ){
+			; Has a left / right variant
+			obj[HH_TYPE_K][translated_vk] := state
+			return 1
+		}
+		return 0
+	}
+	
+	; Removes a "Common Variant" (eg Ctrl) from ALL left/right variants (eg Lctrl) in a State object
+	; Does not alter the object passed in, returns the new object out.
+	StateObjRemoveCommonVariants(obj){
+		; ToDo: Mouse, stick etc.
+		out := [{},{},{}]
+		for key, value in obj[HH_TYPE_K] {
+			out[HH_TYPE_K][key] := value	; add branch on
+			; If this is a left / right version of a key, remove it
+			; Convert VK into left / right indistinguishable SC
+			res := this._MapVirtualKeyEx(key,0)
+			res := this._MapVirtualKeyEx(res,1)
+			
+			if (res != key){
+				out[HH_TYPE_K].Remove(key)
+			}
+		}
+		return out
+	}
+	
 	; INTERNAL / PRIVATE ==========================================================================================================================
 	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
 
@@ -115,14 +150,16 @@ Class CHIDHotkeys {
 		AsynchBeep(2000)
 		
 		state := []
+		cleaned_state := this.StateObjRemoveCommonVariants(this._StateIndex)
+		
 		state[1] := {}
 		
 		; Walk _StateIndex and copy where button is held.
 		s := ""
-		for key, value in this._StateIndex[1] {
+		for key, value in cleaned_state[1] {
 			
 			s .= "key: " key ", value: " value "`n"
-			if (value){
+			if (value && value != 0){
 				state[1][key] := value
 			}
 		}
@@ -168,23 +205,24 @@ Class CHIDHotkeys {
 				this._BindingDetected(data)
 			}
 			; Update _StateIndex array
-			translated_vk := this._MapVirtualKeyEx(data.input.sc)
-			if (translated_vk != data.input.vk){
-				; Has a left / right variant
-				this._StateIndex[HH_TYPE_K][translated_vk] := data.event
-			}
+			
+			this.StateObjAddCommonVariant(this._StateIndex, data.event, data.input.vk, data.input.sc)
 			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
 			
 			; Exit bind Mode here, so we can be sure all input generated during Bind Mode is blocked, where possible.
 			; ToDo data.event will not suffice for sticks?
 			if (this._BindMode && !data.event){
 				this._BindMode := 0
+			}
+			
+			; Do not process any further in Bind Mode
+			if (this._BindMode){
 				return 1
 			}
 
-			
 			; find the total number of modifier keys currently held
 			modsheld := this._StateIndex[HH_TYPE_K][0x10] + this._StateIndex[HH_TYPE_K][0x11] + this._StateIndex[HH_TYPE_K][0x5D] + this._StateIndex[HH_TYPE_K][0x12]
+			
 			; Find best match for binding
 			best_match := {binding: 0, modcount: 0}
 			Loop % this._Bindings.MaxIndex() {
@@ -444,25 +482,26 @@ Class CHIDHotkeys {
 
 	; https://msdn.microsoft.com/en-us/library/windows/desktop/ms646307(v=vs.85).aspx
 	; scan code is translated into a virtual-key code that does not distinguish between left- and right-hand keys
-	_MapVirtualKeyEx(nCode){
-		static uMapType := 1 ; (MAPVK_VSC_TO_VK)
+	_MapVirtualKeyEx(nCode, uMapType := 1){ ; MAPVK_VSC_TO_VK
 		; Get locale
 		static dwhkl := DllCall("GetKeyboardLayout", "uint", 0)
 		
-		;if (uMapType = 1){
-			; Check cache
-			if (!this._MAPVK_VSC_TO_VK[nCode]){
-				; Populate cache
-				ret := DllCall("MapVirtualKeyEx", "Uint", nCode, "Uint", uMapType, "Ptr", dwhkl, "Uint")
-				if (ret = ""){
-					ret := 0
-				}
-				this._MAPVK_VSC_TO_VK[nCode] := ret
+		ret := 0
+		; MAPVK_VSC_TO_VK - The uCode parameter is a scan code and is translated into a virtual-key code
+		; Check cache
+		if (!this[this._MapTypes[uMapType]][nCode]){
+			; Populate cache
+			ret := DllCall("MapVirtualKeyEx", "Uint", nCode, "Uint", uMapType, "Ptr", dwhkl, "Uint")
+			if (ret = ""){
+				ret := 0
 			}
-			; Return result
-			return this._MAPVK_VSC_TO_VK[nCode]
-		;}
-
+			this[this._MapTypes[uMapType]][nCode] := ret
+		} else {
+			; cache hit
+			ret := this[this._MapTypes[uMapType]][nCode]
+		}
+		; Return result
+		return ret
 	}
 }
 
