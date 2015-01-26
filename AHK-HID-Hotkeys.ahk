@@ -1,7 +1,12 @@
 ;#include <AHKHID>
 /*
 ToDo:
-_StateIndex, _Bindings dynamic properties - set 0 on unset.
+* _StateIndex, _Bindings dynamic properties - set 0 on unset.
+* Binding System
+* HID input for joystick support
+* Mouse hooks
+* remove bindings
+* sanity check bindings on add (duplicates, impossible keys etc)
 
 */
 #SingleInstance force
@@ -14,8 +19,10 @@ global HH_TYPE_O := 2
 
 HKHandler := new CHIDHotkeys()
 
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: "HighBeep", modes: {passthru: 0, wild: 1}, event: 1})
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")},{type: HH_TYPE_K, input: GetKeyVK("shift")}], callback: "LowBeep", modes: {passthru: 0}, event: 1})
+fn := Bind("AsynchBeep", 1000)
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: fn, modes: {passthru: 0, wild: 1}, event: 1})
+fn := Bind("AsynchBeep", 500)
+HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")},{type: HH_TYPE_K, input: GetKeyVK("shift")}], callback: fn, modes: {passthru: 0}, event: 1})
 
 mc := new CMainClass()
 
@@ -25,12 +32,15 @@ Esc::ExitApp
 GuiClose:
 ExitApp
 
-HighBeep(){
-	soundbeep, 1000, 250
+; Asynchronous Beeps for debugging or notification
+AsynchBeep(freq){
+	fn := Bind("Beep",freq)
+	; Kick off another thread and continue execution.
+	SetTimer, % fn, -0
 }
-	
-LowBeep(){
-	soundbeep, 500, 250
+
+Beep(freq){
+	Soundbeep % freq, 250	
 }
 
 ; Test functionality when callback bound to a class method
@@ -42,7 +52,7 @@ Class CMainClass {
 	}
 	
 	DownEvent(){
-		soundbeep
+		AsynchBeep(750)
 	}
 }
 
