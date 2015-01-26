@@ -73,7 +73,7 @@ Class CHIDHotkeys {
 	_BindModeCallback := 0		; Callback for BindMode
 	_MAPVK_VSC_TO_VK := {}		; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
 	_MAPVK_VK_TO_VSC := {}		; Lookup table for going the other way
-	_MapTypes := { 0:"_MAPVK_VK_TO_VSC", 1:"_MAPVK_VSC_TO_VK", 2:"_MAPVK_VK_TO_CHAR", 3:"_MAPVK_VSC_TO_VK_EX", 4:"_MAPVK_VK_TO_VSC_EX" }
+	_MapTypes := { 0:"_MAPVK_VK_TO_VSC", 1:"_MAPVK_VSC_TO_VK"}	; VK to Scancode Lookup tables.
 
 	; USER METHODS ================================================================================================================================
 	; Stuff intended for everyday use by people using the class.
@@ -118,8 +118,10 @@ Class CHIDHotkeys {
 			; If this is a left / right version of a key, remove it
 			; Convert VK into left / right indistinguishable SC
 			res := this._MapVirtualKeyEx(key,0)
+			; Convert non left/right sensitve SC back to VK
 			res := this._MapVirtualKeyEx(res,1)
 			
+			; if key has left / right versions, result will be different to the original value
 			if (res != key){
 				out[HH_TYPE_K].Remove(key)
 			}
