@@ -1,0 +1,11 @@
+A collection of numbers to help me debug etc.
+
+VKs
+Hex Dec Key
+0x11 17 Control
+0xA2 162 Lctrl
+0xA3 163 RCtrl
+
+SCs
+Dec Key
+29 Lctrl

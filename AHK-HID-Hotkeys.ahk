@@ -26,9 +26,13 @@ HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE
 
 mc := new CMainClass()
 
-HKHandler.DetectBinding()
+HKHandler.Bind("BindingDetected")
 
 Return
+
+BindingDetected(binding){
+	a := 1	; debugging point
+}
 
 Esc::ExitApp
 GuiClose:
@@ -62,10 +66,11 @@ Class CMainClass {
 
 ; Only ever instantiate once!
 Class CHIDHotkeys {
-	_Bindings := []			; Holds list of bindings
-	_BindMode := 0			; Whether we are currently making a binding or not
-	_StateIndex := []		; State of inputs as of last event
-	_MAPVK_VSC_TO_VK := {}	; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
+	_Bindings := []				; Holds list of bindings
+	_BindMode := 0				; Whether we are currently making a binding or not
+	_StateIndex := []			; State of inputs as of last event
+	_BindModeCallback := 0		; Callback for BindMode
+	_MAPVK_VSC_TO_VK := {}		; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
 
 	; USER METHODS ================================================================================================================================
 	; Stuff intended for everyday use by people using the class.
@@ -76,28 +81,56 @@ Class CHIDHotkeys {
 		this._Bindings.Insert(obj)
 	}
 	
+	; Request a binding.
+	; Returns 1 for OK, you have control of binding system, 0 for no.
+	Bind(callback){
+		; ToDo: need good way if check if valid callback
+		if (this.BindMode || callback = ""){
+			return 0
+		}
+		this._BindModeCallback := callback
+		this._DetectBinding()
+		return 1
+	}
+	; INTERNAL / PRIVATE ==========================================================================================================================
+	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
+
 	; Locks out input and prompts the user to hit the desired hotkey that they wish to bind.
 	; Terminates on key up.
 	; Returns a copy of the _StateIndex array just before the key release
-	DetectBinding(){
+	_DetectBinding(){
 		Gui, New, HwndHwnd -Border
 		this._BindPrompt := hwnd
 		Gui, % Hwnd ":Add", Text, center w400,Please select what you would like to use for this binding`n`nCurrently, only keyboard input is supported.`n`nHotkey is bound when you release the last key.
 		Gui, % Hwnd ":Show", w400
-		
-		this._BindMode := 1
-	}
 	
-	; INTERNAL / PRIVATE ==========================================================================================================================
-	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
+		this._BindMode := 1
+		return 1
+	}
 
 	; Up event or change happened in bind mode.
 	; _Stateindex should hold state of desired binding.
 	_BindingDetected(data){
+		Gui, % this._BindPrompt ":Destroy"
 		AsynchBeep(2000)
 		
-		Gui, % this._BindPrompt ":Destroy"
-		return
+		state := []
+		state[1] := {}
+		
+		; Walk _StateIndex and copy where button is held.
+		s := ""
+		for key, value in this._StateIndex[1] {
+			
+			s .= "key: " key ", value: " value "`n"
+			if (value){
+				state[1][key] := value
+			}
+		}
+		;tooltip % s
+		; call callback, pass _StateIndex structure
+		fn := Bind(this._BindModeCallback, state)
+		SetTimer, % fn, -0
+		return 1
 	}
 
 	__New(){
@@ -119,6 +152,9 @@ Class CHIDHotkeys {
 		this._HIDUnRegister()
 	}
 	
+	; Muster point for processing of incoming input - ALL INPUT SHOULD ULTIMATELY ROUTE THROUGH HERE
+	; SetWindowsHookEx (Keyboard, Mouse) to route via here.
+	; HID input (eg sticks) to be routed via here too.
 	_ProcessInput(data){
 		if (data.type = HH_TYPE_K){
 			; Set _StateIndex to reflect state of key
