@@ -80,21 +80,21 @@ Class CHIDHotkeys {
 	_ProcessInput(data){
 		if (data.type = HH_TYPE_K){
 			; Set _StateIndex to reflect state of key
-			if (data.input = 65){
+			if (data.input.vk = 65){
 				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
 			}
-			this._StateIndex[HH_TYPE_K][data.input] := data.event
+			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
 			; If key has Left / Right variants (ie Modifiers), on event for variant, set state for common version (eg on LCtrl down, set Ctrl as down too)
-			if (data.input = 0xA0 || data.input = 0xA1){		; VK_LSHIFT || VK_RSHIFT
+			if (data.input.vk = 0xA0 || data.input.vk = 0xA1){		; VK_LSHIFT || VK_RSHIFT
 				; L/R Shift
 				this._StateIndex[HH_TYPE_K][0x10] := data.event	; VK_SHIFT
-			} else if (data.input = 0xA2 || data.input = 0xA3){ ; VK_LCONTROL || VK_RCONTROL
+			} else if (data.input.vk = 0xA2 || data.input.vk = 0xA3){ ; VK_LCONTROL || VK_RCONTROL
 				; L/R control
 				this._StateIndex[HH_TYPE_K][0x11] := data.event	; VK_CONTROL
-			} else if (data.input = 0x5B || data.input = 0x5C){	; VK_LWIN || VK_RWIN
+			} else if (data.input.vk = 0x5B || data.input.vk = 0x5C){	; VK_LWIN || VK_RWIN
 				; L/R Win
 				this._StateIndex[HH_TYPE_K][0x5D] := data.event	; VK_APPS
-			} else if (data.input = 0xA4 || data.input = 0xA5){	; VK_LMENU || VK_RMENU
+			} else if (data.input.vk = 0xA4 || data.input.vk = 0xA5){	; VK_LMENU || VK_RMENU
 				; L/R Alt
 				this._StateIndex[HH_TYPE_K][0x12] := data.event	; VK_MENU
 			}
@@ -104,7 +104,7 @@ Class CHIDHotkeys {
 			best_match := {binding: 0, modcount: 0}
 			Loop % this._Bindings.MaxIndex() {
 				b := A_Index
-				if (this._Bindings[b].type = data.type && this._Bindings[b].input = data.input && this._Bindings[b].event = data.event){
+				if (this._Bindings[b].type = data.type && this._Bindings[b].input = data.input.vk && this._Bindings[b].event = data.event){
 					max := this._Bindings[b].modifiers.MaxIndex()
 					if (!max){	; convert "" to 0
 						max := 0
@@ -159,7 +159,7 @@ Class CHIDHotkeys {
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
-			if (this._ProcessInput({type: HH_TYPE_K, input: NumGet(lParam+0, 0, "Uint"), event: wParam = 0x100})){
+			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flg: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
