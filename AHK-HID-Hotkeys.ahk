@@ -63,7 +63,19 @@ Class CHIDHotkeys {
 	_Bindings := []
 	_StateIndex := []
 	_MAPVK_VSC_TO_VK := {}	; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
+
+	; USER METHODS ================================================================================================================================
+	; Stuff intended for everyday use by people using the class.
 	
+	; Add a binding. Input format is basically the same as the _Bindings data structure. See Docs\Bindings Structure.json
+	Add(obj){
+		;return new this._Binding(this,obj)
+		this._Bindings.Insert(obj)
+	}
+	
+	; INTERNAL / PRIVATE ==========================================================================================================================
+	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
+
 	__New(){
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
 		
@@ -81,12 +93,6 @@ Class CHIDHotkeys {
 	
 	__Delete(){
 		this._HIDUnRegister()
-	}
-	
-	; Add a binding
-	Add(obj){
-		;return new this._Binding(this,obj)
-		this._Bindings.Insert(obj)
 	}
 	
 	_ProcessInput(data){
@@ -307,7 +313,6 @@ Class CHIDHotkeys {
 	
 	; FATAL FLAW in code:
 	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
-	*/
 
 	; converts to hex, pads to 4 digits, chops off 0x
 	ToHex(dec, padding := 4){
@@ -348,6 +353,7 @@ Class CHIDHotkeys {
 		;-- Assemble and return the final value
 		Return l_NegativeChar . "0x" . l_Buffer
 	}
+	*/
 	
 	_SetWindowsHookEx(idHook, pfn){
 		Return DllCall("SetWindowsHookEx", "int", idHook, "Uint", pfn, "Uint", DllCall("GetModuleHandle", "Uint", 0, "Ptr"), "Uint", 0, "Ptr")
