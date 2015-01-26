@@ -26,6 +26,8 @@ HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE
 
 mc := new CMainClass()
 
+HKHandler.DetectBinding()
+
 Return
 
 Esc::ExitApp
@@ -60,8 +62,9 @@ Class CMainClass {
 
 ; Only ever instantiate once!
 Class CHIDHotkeys {
-	_Bindings := []
-	_StateIndex := []
+	_Bindings := []			; Holds list of bindings
+	_BindMode := 0			; Whether we are currently making a binding or not
+	_StateIndex := []		; State of inputs as of last event
 	_MAPVK_VSC_TO_VK := {}	; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
 
 	; USER METHODS ================================================================================================================================
@@ -73,8 +76,30 @@ Class CHIDHotkeys {
 		this._Bindings.Insert(obj)
 	}
 	
+	; Locks out input and prompts the user to hit the desired hotkey that they wish to bind.
+	; Terminates on key up.
+	; Returns a copy of the _StateIndex array just before the key release
+	DetectBinding(){
+		Gui, New, HwndHwnd -Border
+		this._BindPrompt := hwnd
+		Gui, % Hwnd ":Add", Text, center w400,Please select what you would like to use for this binding`n`nCurrently, only keyboard input is supported.`n`nHotkey is bound when you release the last key.
+		Gui, % Hwnd ":Show", w400
+		
+		this._BindMode := 1
+	}
+	
 	; INTERNAL / PRIVATE ==========================================================================================================================
 	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
+
+	; Up event or change happened in bind mode.
+	; _Stateindex should hold state of desired binding.
+	_BindingDetected(data){
+		AsynchBeep(2000)
+		
+		this._BindMode := 0
+		Gui, % this._BindPrompt ":Destroy"
+		return
+	}
 
 	__New(){
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
@@ -99,8 +124,13 @@ Class CHIDHotkeys {
 		if (data.type = HH_TYPE_K){
 			; Set _StateIndex to reflect state of key
 			; lr_variant := data.input.flags & 1	; is this the left (0) or right (1) version of this key?
-			if (a.input.vk = 65 || data.input.flags){
+			if (data.input.vk = 65){
 				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
+			}
+			if (this._BindMode && !data.event){
+				; Key up in Bind Mode - Fire _BindingDetected before updating _StateIndex, so it sees all the keys as down.
+				; Pass data so it can see the End Key
+				this._BindingDetected(data)
 			}
 			; Update _StateIndex array
 			translated_vk := this._MapVirtualKeyEx(data.input.sc)
@@ -383,9 +413,9 @@ Class CHIDHotkeys {
 					ret := 0
 				}
 				this._MAPVK_VSC_TO_VK[nCode] := ret
-				; Return result
-				return this._MAPVK_VSC_TO_VK[nCode]
 			}
+			; Return result
+			return this._MAPVK_VSC_TO_VK[nCode]
 		;}
 
 	}
