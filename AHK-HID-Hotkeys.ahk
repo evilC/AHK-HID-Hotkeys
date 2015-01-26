@@ -31,8 +31,31 @@ HKHandler.Bind("BindingDetected")
 Return
 
 ; Test Bind ended
-BindingDetected(binding){
-	a := 1	; debugging point
+; data holds information about the key that triggered exit of Bind Mode
+BindingDetected(binding, data){
+	global HKHandler
+	s := ""
+	endkey := data.input.vk	; ToDo: fix for stick?
+	count := 0
+	for key, value in binding[1] {
+		keyname := GetKeyName("vk" HKHandler.ToHex(key,2))
+		StringUpper, keyname , keyname
+		if (key = endkey){
+			;endkey := keyname
+			continue
+		} else {
+			if (count){
+				s .= " + "
+			}
+			s .= keyname
+			count++
+		}
+		
+	}
+	keyname := GetKeyName("vk" HKHandler.ToHex(data.input.vk,2))
+	StringUpper, keyname, keyname
+	s := "You hit the " keyname " key while holding " s
+	msgbox % s
 }
 
 Esc::ExitApp
@@ -167,7 +190,7 @@ Class CHIDHotkeys {
 		}
 		;tooltip % s
 		; call callback, pass _StateIndex structure
-		fn := Bind(this._BindModeCallback, state)
+		fn := Bind(this._BindModeCallback, state, data)
 		SetTimer, % fn, -0
 		return 1
 	}
@@ -429,6 +452,8 @@ Class CHIDHotkeys {
 	; FATAL FLAW in code:
 	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
 
+	*/
+
 	; converts to hex, pads to 4 digits, chops off 0x
 	ToHex(dec, padding := 4){
 		return Substr(this.Convert2Hex(dec,padding),3)
@@ -468,7 +493,6 @@ Class CHIDHotkeys {
 		;-- Assemble and return the final value
 		Return l_NegativeChar . "0x" . l_Buffer
 	}
-	*/
 	
 	_SetWindowsHookEx(idHook, pfn){
 		Return DllCall("SetWindowsHookEx", "int", idHook, "Uint", pfn, "Uint", DllCall("GetModuleHandle", "Uint", 0, "Ptr"), "Uint", 0, "Ptr")
