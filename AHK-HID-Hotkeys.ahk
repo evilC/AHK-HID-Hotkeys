@@ -7,7 +7,6 @@ ToDo:
 * sanity check bindings on add (duplicates, impossible keys etc)
 
 Bugs:
-* Bind bug: Holding Ctrl + A, then hitting LShift does not clear common key "Shift" from the list.
 
 */
 #SingleInstance force
@@ -166,9 +165,10 @@ Class CHIDHotkeys {
 	
 	; Removes a "Common Variant" (eg Ctrl) from ALL left/right variants (eg Lctrl) in a State object
 	; Does not alter the object passed in, returns the new object out.
-	StateObjRemoveCommonVariants(obj){
+	StateObjRemoveCommonVariants(obj, data){
 		; ToDo: Mouse, stick etc.
 		out := {}
+		s := ""
 		for key, value in obj {
 			out[key] := value	; add branch on
 			; If this is a left / right version of a key, remove it
@@ -177,10 +177,24 @@ Class CHIDHotkeys {
 			; Convert non left/right sensitve SC back to VK
 			res := this._MapVirtualKeyEx(res,1)
 			
-			; if key has left / right versions, result will be different to the original value
-			if (res != key){
-				out.Remove(key)
+			if (data.type = HH_TYPE_K){
+				; End key is keyboard - Find "Common" version for end key
+				ekc := this._MapVirtualKeyEx(data.input.vk,0)
+				ekc := this._MapVirtualKeyEx(ekc,1)
+				is_end_key := ( ekc = key  )
+			} else {
+				is_end_key := 0
 			}
+			
+			; If this has left / right versions, result will be different to the original value, remove it.
+			; If this is a common version and also the end key, remove it.
+			if (res != key || is_end_key ){
+				s .= "removing " key "`n"
+				out.Remove(key)
+			} else {
+				s .= " ignoring " key "`n"
+			}
+			;tooltip % s
 		}
 		return out
 	}
@@ -219,7 +233,7 @@ Class CHIDHotkeys {
 		
 		; Discern End-Key from rest of State
 		; "End Pair" (state + endkey data) starts here.
-		input_state := {0: this._StateIndex[HH_TYPE_M], 1: this.StateObjRemoveCommonVariants(this._StateIndex[HH_TYPE_K]) }
+		input_state := {0: this._StateIndex[HH_TYPE_M], 1: this.StateObjRemoveCommonVariants(this._StateIndex[HH_TYPE_K], data) }
 		output_state := {0: {}, 1: {} }
 
 		; Walk _StateIndex and copy where button is held.
@@ -246,7 +260,6 @@ Class CHIDHotkeys {
 		this._StateIndex[0] := {}
 		this._StateIndex[1] := {0x10: 0, 0x11: 0, 0x12: 0, 0x5D: 0}	; initialize modifier states
 		this._StateIndex[2] := {}
-		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
 		fn := _BindCallback(this._ProcessKHook,"Fast",,this)
 		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, fn)
 		fn := _BindCallback(this._ProcessMHook,"Fast",,this)
@@ -258,7 +271,7 @@ Class CHIDHotkeys {
 	
 	; Destructor
 	__Delete(){
-		this._HIDUnRegister()
+		;this._HIDUnRegister()
 	}
 	
 	; Muster point for processing of incoming input - ALL INPUT SHOULD ULTIMATELY ROUTE THROUGH HERE
@@ -434,143 +447,6 @@ Class CHIDHotkeys {
 		*/
 	}
 	
-	/*
-	; Process Joystick messages from HID
-	_ProcessHID(wParam, lParam){
-		Critical
-		global RIM_TYPEMOUSE, RIM_TYPEKEYBOARD, RIM_TYPEHID
-		global II_DEVTYPE, II_KBD_FLAGS, II_MSE_BUTTONFLAGS, II_KBD_VKEY, II_KBD_MAKECODE
-		r := AHKHID_GetInputInfo(lParam, II_DEVTYPE)
-		waslogged := 0
-		waswheel := 0
-		If (r = -1)
-			OutputDebug %ErrorLevel%
-		If (r = RIM_TYPEMOUSE) {
-			; Mouse Input ==============
-			; Filter mouse movement
-			flags := AHKHID_GetInputInfo(lParam, II_MSE_BUTTONFLAGS)
-			if (flags){
-				; IMPORTANT NOTE!
-				; EVENT COULD CONTAIN MORE THAN ONE BUTTON CHANGE!!!
-				;soundbeep
-				a := 1
-			}
-		} Else If (r = RIM_TYPEKEYBOARD) {
-			; Keyboard Input
-			vk := AHKHID_GetInputInfo(lParam, II_KBD_VKEY)
-			;keyname := GetKeyName("vk" this.ToHex(vk,2))
-			flags := AHKHID_GetInputInfo(lParam, II_KBD_FLAGS)
-			makecode := AHKHID_GetInputInfo(lParam, II_KBD_MAKECODE)
-			meta := 0
-			if (vk == 17) {
-				; Control
-				if (flags < 2){
-					; LControl
-					meta := "L"
-				} else {
-					; RControl
-					meta := "R"
-					flags -= 2
-				
-				}
-				; One of the control keys
-			} else if (vk == 18) {
-				; Alt
-				if (flags < 2){
-					; LAlt
-					meta := "L"
-				} else {
-					; RAlt
-					meta := "R"
-					flags -= 3	; RALT REPORTS DIFFERENTLY!
-				
-				}
-			} else if (vk == 16){
-				; Shift
-				if (makecode == 42){
-					; LShift
-					meta := "L"
-				} else {
-					; RShift
-					meta := "R"
-				}
-			} else if (vk == 91 || vk == 92) {
-				; Windows key
-				flags -= 2
-				if (makecode == 91){
-					; LWin
-					meta := "L"
-				} else {
-					; RWin
-					meta := "R"
-				}
-			}
-			;this._ProcessInput(r, prefix keyname, !flags)
-			return this._ProcessInput(r, meta, vk, !flags)
-			;Tooltip % "Keyboard: " s (flags ? " Up" : " Down")
-		} Else If (r = RIM_TYPEHID) {
-			
-		}
-	}
-	
-	; Register with AHKHID
-	_HIDRegister(){
-		global RIDEV_INPUTSINK
-		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
-		static WH_CALLWNDPROC := 4, WH_GETMESSAGE := 3
-
-		; Register with HID
-		joysticks := {} ; disable for now
-		count := 0
-		for key, value in joysticks {
-			count++
-		}
-		;AHKHID_AddRegister(2 + count)
-		;AHKHID_AddRegister(1,2,A_ScriptHwnd,RIDEV_INPUTSINK)
-		;AHKHID_AddRegister(1,6,A_ScriptHwnd,RIDEV_INPUTSINK)
-		;for name, obj in joysticks {
-		;	AHKHID_AddRegister(obj.page, obj.usage, A_ScriptHwnd, RIDEV_INPUTSINK)
-		;}
-		;AHKHID_Register()
-		
-		; Register global hooks
-		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
-		;bound := new RegisterBind(this._ProcessHook, this)
-		;addr := new Onject(bound)
-		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback(bound.Callback,,, addr))
-		;this._hHookMouse := SetWindowsHookEx(WH_MOUSE_LL, RegisterCallback("MouseMove", "Fast"))
-
-	}
-	
-	; Unregister with AHKDID
-	_HIDUnRegister(){
-		global RIDEV_REMOVE
-		AHKHID_Register(1,2,0,RIDEV_REMOVE)		;Although MSDN requires the handle to be 0, you can send A_ScriptHwnd if you want.
-		this._UnhookWindowsHookEx(this._hHookKeybd)
-		this._UnhookWindowsHookEx(this._hHookMouse)
-		Return									;AHKHID will automatically put 0 for RIDEV_REMOVE.
-	}
-	
-	; Final stage of input processing. _ProcessHook and _ProcessHID both call this
-	; ALL INPUT MUST FLOW THROUGH HERE
-	; Type = RIM_TYPEMOUSE, RIM_TYPEKEYBOARD or RIM_TYPEHID (Joysticks)
-	; input_meta = meta-info about input.
-	; 	Keyboard: l (left modifier), r (right modifier) or 0 (not a modifier)
-	;	Mouse: Always 0
-	; 	Joystick: Stick ID
-	; input_code: The input that happened.
-	; 	Keyboard: VK
-	; 	Mouse: 
-	; 	Joystick: Axis or Button # ?
-	; Event
-	;   Keyboard / Mouse / Joystick Button: = 0 (up) / 1 (down)
-	; 	Joystick: Axis Value
-	
-	; FATAL FLAW in code:
-	; If hook passes into here, but we do not block, this will be called again, as HID receives another message...
-
-	*/
-
 	; converts to hex, pads to 4 digits, chops off 0x
 	ToHex(dec, padding := 4){
 		return Substr(this.Convert2Hex(dec,padding),3)
