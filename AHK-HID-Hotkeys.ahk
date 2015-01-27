@@ -2,11 +2,12 @@
 /*
 ToDo:
 * _StateIndex, _Bindings dynamic properties - set 0 on unset.
-* Binding System
 * HID input for joystick support
-* Mouse hooks
-* remove bindings
+* Allow removal of bindings
 * sanity check bindings on add (duplicates, impossible keys etc)
+
+Bugs:
+* Bind bug: Holding Ctrl + A, then hitting LShift does not clear common key "Shift" from the list.
 
 */
 #SingleInstance force
@@ -18,7 +19,7 @@ global HH_TYPE_K := 1
 global HH_TYPE_O := 2
 global HH_MOUSE_WPARAM_LOOKUP := {0x201: 1, 0x202: 1, 0x204: 2, 0x205: 2, 0x207: 3, 0x208: 3, 0x020B: 4, 0x020C: 4, 0x20A: 6, 0x20E: 7} ; No XButton 2 lookup as it lacks a unique wParam
 global HH_MOUSE_NAME_LOOKUP := {LButton: 1, RButton: 2, MButton: 3, XButton1: 4, XButton2: 5, Wheel: 6, Tilt: 7}
-global HH_MOUSE_BUTTON_NAMES := ["LButton", "RButton", "MButton", "XButton1", "XButton2", "Mouse Wheel", "Mouse Tilt"]
+global HH_MOUSE_BUTTON_NAMES := ["LButton", "RButton", "MButton", "XButton1", "XButton2", "MWheel", "MTilt"]
 global HH_INPUT_TYPES := {0: "Mouse", 1: "Keyboard", 2: "Other"}
 
 HKHandler := new CHIDHotkeys()
@@ -120,8 +121,16 @@ Class CHIDHotkeys {
 	}
 	
 	; Converts a Binding, data pair into a human readable endkey and modifier strings
-	GetBindingHumanReadable(binding, data) {		
+	GetBindingHumanReadable(binding, data) {
 		endkey := this.GetInputHumanReadable(data.type, data.input.vk)	; ToDo: fix for stick?
+		if (this.IsWheelType(data)){
+			; Mouse wheel cannot be a modifier, as it releases immediately
+			if (data.event < 0){
+				endkey .= "_U"
+			} else {
+				endkey .= "_D"
+			}
+		}
 		modifiers := ""
 		count := 0
 		Loop 2 {
@@ -194,7 +203,7 @@ Class CHIDHotkeys {
 	_DetectBinding(){
 		Gui, New, HwndHwnd -Border
 		this._BindPrompt := hwnd
-		Gui, % Hwnd ":Add", Text, center w400,Please select what you would like to use for this binding`n`nCurrently, only keyboard input is supported.`n`nHotkey is bound when you release the last key.
+		Gui, % Hwnd ":Add", Text, center w400,Please select what you would like to use for this binding`n`nCurrently, keyboard and mouse input is supported.`n`nHotkey is bound when you release the last key.
 		Gui, % Hwnd ":Show", w400
 	
 		this._BindMode := 1
@@ -260,6 +269,9 @@ Class CHIDHotkeys {
 			; lr_variant := data.input.flags & 1	; is this the left (0) or right (1) version of this key?
 			if (data.input.vk = 65){
 				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
+			}
+			if (data.event = 0){
+				debug := "Exit Bind Mode Debug Point"
 			}
 			if ( this._BindMode && this.IsUpEvent(data) ){
 				; Key up in Bind Mode - Fire _BindingDetected before updating _StateIndex, so it sees all the keys as down.
@@ -366,8 +378,8 @@ Class CHIDHotkeys {
 		static WM_LBUTTONDOWN := 0x0201, WM_LBUTTONUP := 0x0202 , WM_RBUTTONDOWN := 0x0204, WM_RBUTTONUP := 0x0205, WM_MBUTTONDOWN := 0x0207, WM_MBUTTONUP := 0x0208, WM_MOUSEHWHEEL := x020E, WM_MOUSEWHEEL := 0x020A, WM_XBUTTONDOWN := 0x020B, WM_XBUTTONUP := 0x020C
 		Critical
 		
-		; Filter out mouse move
-		if (wParam != 0x200){
+		; Filter out mouse move and other unwanted messages
+		If ( wParam = WM_LBUTTONDOWN || wParam = WM_LBUTTONUP || wParam = WM_RBUTTONDOWN || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONDOWN || wParam = WM_MBUTTONUP || wParam = WM_MOUSEWHEEL || wParam = WM_MOUSEHWHEEL || wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ) {
 			; ToDo: Some of these numgets and bit comparison seem a little dodgy. Can be improved.
 			mouseData := NumGet(lParam+0, 8, "Uint")
 			flags := NumGet(lParam+0, 12, "Uint")
@@ -376,7 +388,7 @@ Class CHIDHotkeys {
 			if (wParam = WM_LBUTTONUP || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONUP ){
 				; Normally supported up event
 				event := 0
-			} else if (wParam = WM_MOUSEWHEEL) {
+			} else if (wParam = WM_MOUSEWHEEL || wParam = WM_MOUSEHWHEEL) {
 				; Mouse wheel has no up event
 				vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
 				; event = 1 for up, -1 for down
@@ -388,6 +400,9 @@ Class CHIDHotkeys {
 				}
 			} else if (wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ){
 				; Bit 18 identifies XButton 1/2 instead of a unique wParam
+				if (wParam = WM_XBUTTONUP){
+					debug := "me"
+				}
 				vk := this.IsBitSet(mouseData,18) + 4
 				event := (wParam = WM_XBUTTONDOWN)
 			} else {
@@ -395,13 +410,13 @@ Class CHIDHotkeys {
 				event := 1
 			}
 			;tooltip % "type: " HH_INPUT_TYPES[HH_TYPE_M] "`ncode: " vk "`nevent: " event
-			If ( wParam = 0x0201 || wParam = 0x0202 || wParam = 0x0204 || wParam = 0x0205 || wParam = 0x0207 || wParam = 0x0208 || wParam = 0x020E || wParam = 0x020A || wParam = 0x020B ) {
-				if (this._ProcessInput({type: HH_TYPE_M, input: { vk: vk}, event: event})){
-					; Return 1 to block this input
-					; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
-					return 1
-				}
+			if (this._ProcessInput({type: HH_TYPE_M, input: { vk: vk}, event: event})){
+				; Return 1 to block this input
+				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
+				return 1
 			}
+		} else if (wParam != 0x200){
+			debug := "here"
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
