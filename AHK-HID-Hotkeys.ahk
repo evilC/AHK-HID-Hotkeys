@@ -4,9 +4,11 @@ ToDo:
 * _StateIndex, _Bindings dynamic properties - set 0 on unset.
 * HID input for joystick support
 * Allow removal of bindings
-* sanity check bindings on add (duplicates, impossible keys etc)
+* Sanity check bindings on add (duplicates, impossible keys etc)
+* Binding GUI Item?
 
 Bugs:
+* Win does not work as a modifier, but does as an end key !?
 
 */
 #SingleInstance force
