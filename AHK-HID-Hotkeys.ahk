@@ -121,12 +121,7 @@ Class CHIDHotkeys {
 	
 	; Converts a Binding, data pair into a human readable endkey and modifier strings
 	GetBindingHumanReadable(binding, data) {		
-		if (data.type = HH_TYPE_K){
-			;endkey := data.input.vk	; ToDo: fix for stick?
-			endkey := this.GetInputHumanReadable(data.type,data.input.vk)
-		} else if (data.input.type = HH_TYPE_M){
-			endkey := data.input.vk	; ToDo: fix for stick?
-		}
+		endkey := this.GetInputHumanReadable(data.type, data.input.vk)	; ToDo: fix for stick?
 		modifiers := ""
 		count := 0
 		Loop 2 {
@@ -163,9 +158,9 @@ Class CHIDHotkeys {
 	; Does not alter the object passed in, returns the new object out.
 	StateObjRemoveCommonVariants(obj){
 		; ToDo: Mouse, stick etc.
-		out := [{},{},{}]
-		for key, value in obj[HH_TYPE_K] {
-			out[HH_TYPE_K][key] := value	; add branch on
+		out := {}
+		for key, value in obj {
+			out[key] := value	; add branch on
 			; If this is a left / right version of a key, remove it
 			; Convert VK into left / right indistinguishable SC
 			res := this._MapVirtualKeyEx(key,0)
@@ -174,7 +169,7 @@ Class CHIDHotkeys {
 			
 			; if key has left / right versions, result will be different to the original value
 			if (res != key){
-				out[HH_TYPE_K].Remove(key)
+				out.Remove(key)
 			}
 		}
 		return out
@@ -212,26 +207,28 @@ Class CHIDHotkeys {
 		Gui, % this._BindPrompt ":Destroy"
 		AsynchBeep(2000)
 		
-		state := []
-		cleaned_state := this.StateObjRemoveCommonVariants(this._StateIndex)
-		state[0] := {}
-		state[1] := {}
-		
+		; Discern End-Key from rest of State
+		; "End Pair" (state + endkey data) starts here.
+		input_state := {0: this._StateIndex[HH_TYPE_M], 1: this.StateObjRemoveCommonVariants(this._StateIndex[HH_TYPE_K]) }
+		output_state := {0: {}, 1: {} }
+
 		; Walk _StateIndex and copy where button is held.
-		s := ""
-		for key, value in cleaned_state[data.type] {
-			if ( value && (value != 0) ){
-			s .= "key: " key ", value: " value "`n"
-				state[data.type][key] := value
+		Loop 2 {
+			t := A_Index-1
+			s := ""
+			for key, value in input_state[t] {
+				if ( value && (value != 0) ){
+					output_state[t][key] := value
+				}
 			}
 		}
-		;tooltip % s
 		; call callback, pass _StateIndex structure
-		fn := Bind(this._BindModeCallback, state, data)
+		fn := Bind(this._BindModeCallback, output_state, data)
 		SetTimer, % fn, -0
 		return 1
 	}
 
+	; Constructor
 	__New(){
 		static WH_KEYBOARD_LL := 13, WH_MOUSE_LL := 14
 		
@@ -249,6 +246,7 @@ Class CHIDHotkeys {
 		;this._HIDRegister()
 	}
 	
+	; Destructor
 	__Delete(){
 		this._HIDUnRegister()
 	}
@@ -348,7 +346,7 @@ Class CHIDHotkeys {
 		return 0
 	}
 
-	; Process Keyboard messages from Hooks
+	; Process Keyboard messages from Hooks and feed _ProcessInput
 	_ProcessKHook(nCode, wParam, lParam){
 		Critical
 		
@@ -362,7 +360,7 @@ Class CHIDHotkeys {
 		Return this._CallNextHookEx(nCode, wParam, lParam)
 	}
 	
-	; Process Mouse messages from Hooks
+	; Process Mouse messages from Hooks and feed _ProcessInput
 	_ProcessMHook(nCode, wParam, lParam){
 		; Mouse callback struct: https://msdn.microsoft.com/en-us/library/windows/desktop/ms644970(v=vs.85).aspx
 		static WM_LBUTTONDOWN := 0x0201, WM_LBUTTONUP := 0x0202 , WM_RBUTTONDOWN := 0x0204, WM_RBUTTONUP := 0x0205, WM_MBUTTONDOWN := 0x0207, WM_MBUTTONUP := 0x0208, WM_MOUSEHWHEEL := x020E, WM_MOUSEWHEEL := 0x020A, WM_XBUTTONDOWN := 0x020B, WM_XBUTTONUP := 0x020C
@@ -370,6 +368,7 @@ Class CHIDHotkeys {
 		
 		; Filter out mouse move
 		if (wParam != 0x200){
+			; ToDo: Some of these numgets and bit comparison seem a little dodgy. Can be improved.
 			mouseData := NumGet(lParam+0, 8, "Uint")
 			flags := NumGet(lParam+0, 12, "Uint")
 			
@@ -381,23 +380,16 @@ Class CHIDHotkeys {
 				; Mouse wheel has no up event
 				vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
 				; event = 1 for up, -1 for down
+				; wheel vector is stored as signed. For now, just look at 2`s compliment bit to see if negative. Could be >1 tick though? Do we care?
 				if (this.IsBitSet(mouseData,23)){
 					event := 1
 				} else {
 					event := -1
 				}
 			} else if (wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ){
+				; Bit 18 identifies XButton 1/2 instead of a unique wParam
 				vk := this.IsBitSet(mouseData,18) + 4
-				if (wParam = WM_XBUTTONUP){
-					a := 1
-				} else {
-					a := 2
-				}
 				event := (wParam = WM_XBUTTONDOWN)
-				if (mouseData & 2){
-					; 2nd XButton was hit
-					vk++
-				}
 			} else {
 				; Only down left
 				event := 1
