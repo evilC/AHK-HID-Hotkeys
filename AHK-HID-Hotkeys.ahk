@@ -16,6 +16,10 @@ OnExit, GuiClose
 global HH_TYPE_M := 0
 global HH_TYPE_K := 1
 global HH_TYPE_O := 2
+global HH_MOUSE_WPARAM_LOOKUP := {0x201: 1, 0x202: 1, 0x204: 2, 0x205: 2, 0x207: 3, 0x208: 3, 0x020B: 4, 0x020C: 4, 0x20A: 6, 0x20E: 7} ; No XButton 2 lookup as it lacks a unique wParam
+global HH_MOUSE_NAME_LOOKUP := {LButton: 1, RButton: 2, MButton: 3, XButton1: 4, XButton2: 5, Wheel: 6, Tilt: 7}
+global HH_MOUSE_BUTTON_NAMES := ["LButton", "RButton", "MButton", "XButton1", "XButton2", "Mouse Wheel", "Mouse Tilt"]
+global HH_INPUT_TYPES := {0: "Mouse", 1: "Keyboard", 2: "Other"}
 
 HKHandler := new CHIDHotkeys()
 
@@ -34,27 +38,11 @@ Return
 ; data holds information about the key that triggered exit of Bind Mode
 BindingDetected(binding, data){
 	global HKHandler
-	s := ""
-	endkey := data.input.vk	; ToDo: fix for stick?
-	count := 0
-	for key, value in binding[1] {
-		keyname := GetKeyName("vk" HKHandler.ToHex(key,2))
-		StringUpper, keyname , keyname
-		if (key = endkey){
-			;endkey := keyname
-			continue
-		} else {
-			if (count){
-				s .= " + "
-			}
-			s .= keyname
-			count++
-		}
-		
+	human_readable := HKHandler.GetBindingHumanReadable(binding, data)
+	s := "You Hit " human_readable.endkey
+	if (human_readable.modifiers){
+		s .= " while holding " human_readable.modifiers
 	}
-	keyname := GetKeyName("vk" HKHandler.ToHex(data.input.vk,2))
-	StringUpper, keyname, keyname
-	s := "You hit the " keyname " key while holding " s
 	msgbox % s
 }
 
@@ -119,6 +107,46 @@ Class CHIDHotkeys {
 		return 1
 	}
 	
+	; Converts an Input to a human readable format.
+	GetInputHumanReadable(type, code) {
+		if (type = HH_TYPE_K){
+			vk := this.ToHex(code,2)
+			keyname := GetKeyName("vk" vk)
+		} else if (type = HH_TYPE_M){
+			keyname := HH_MOUSE_BUTTON_NAMES[code]
+		}
+		StringUpper, keyname, keyname
+		return keyname
+	}
+	
+	; Converts a Binding, data pair into a human readable endkey and modifier strings
+	GetBindingHumanReadable(binding, data) {		
+		if (data.type = HH_TYPE_K){
+			;endkey := data.input.vk	; ToDo: fix for stick?
+			endkey := this.GetInputHumanReadable(data.type,data.input.vk)
+		} else if (data.input.type = HH_TYPE_M){
+			endkey := data.input.vk	; ToDo: fix for stick?
+		}
+		modifiers := ""
+		count := 0
+		Loop 2 {
+			t := A_Index - 1
+			for key, value in binding[t] {
+				if (t = data.type && key = data.input.vk){
+					; this is the end key - skip
+					continue
+				}
+				if (count){
+					modifiers .= " + "
+				}
+				modifiers .= this.GetInputHumanReadable(t,key)
+				count++
+			}
+		}
+		
+		return {endkey: endkey, modifiers: modifiers}
+	}
+	
 	; Adds the "common variant" (eg Ctrl) to ONE left/right variant (eg LCtrl) in a State object
 	; ScanCode as input
 	StateObjAddCommonVariant(obj, state, vk, sc := 0){
@@ -152,6 +180,16 @@ Class CHIDHotkeys {
 		return out
 	}
 	
+	; Data packet is of mouse wheel motion
+	IsWheelType(data){
+		return (data.type = HH_TYPE_M) && (data.input.vk = HH_MOUSE_NAME_LOOKUP.Wheel)
+	}
+	
+	; Data packet is an up event for a button or a mouse wheel move (Which does not have up events)
+	IsUpEvent(data){
+		return ( !data.event || this.IsWheelType(data) )
+	}
+	
 	; INTERNAL / PRIVATE ==========================================================================================================================
 	; Anything prefixed with an underscore ( _ ) is not intended for use by end-users.
 
@@ -176,16 +214,15 @@ Class CHIDHotkeys {
 		
 		state := []
 		cleaned_state := this.StateObjRemoveCommonVariants(this._StateIndex)
-		
+		state[0] := {}
 		state[1] := {}
 		
 		; Walk _StateIndex and copy where button is held.
 		s := ""
-		for key, value in cleaned_state[1] {
-			
+		for key, value in cleaned_state[data.type] {
+			if ( value && (value != 0) ){
 			s .= "key: " key ", value: " value "`n"
-			if (value && value != 0){
-				state[1][key] := value
+				state[data.type][key] := value
 			}
 		}
 		;tooltip % s
@@ -203,8 +240,10 @@ Class CHIDHotkeys {
 		this._StateIndex[1] := {0x10: 0, 0x11: 0, 0x12: 0, 0x5D: 0}	; initialize modifier states
 		this._StateIndex[2] := {}
 		;this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, RegisterCallback("_HIDHotkeysKeyboardHook", "Fast"))
-		fn := _BindCallback(this._ProcessHook,"Fast",,this)
+		fn := _BindCallback(this._ProcessKHook,"Fast",,this)
 		this._hHookKeybd := this._SetWindowsHookEx(WH_KEYBOARD_LL, fn)
+		fn := _BindCallback(this._ProcessMHook,"Fast",,this)
+		this._hHookMouse := this._SetWindowsHookEx(WH_MOUSE_LL, fn)
 		
 		;OnMessage(0x00FF, Bind(this._ProcessHID, this))
 		;this._HIDRegister()
@@ -218,25 +257,31 @@ Class CHIDHotkeys {
 	; SetWindowsHookEx (Keyboard, Mouse) to route via here.
 	; HID input (eg sticks) to be routed via here too.
 	_ProcessInput(data){
-		if (data.type = HH_TYPE_K){
+		if (data.type = HH_TYPE_K || data.type = HH_TYPE_M){
 			; Set _StateIndex to reflect state of key
 			; lr_variant := data.input.flags & 1	; is this the left (0) or right (1) version of this key?
 			if (data.input.vk = 65){
 				a := 1	; Breakpoint - done like this so you can hold a modifier but not break.
 			}
-			if (this._BindMode && !data.event){
+			if ( this._BindMode && this.IsUpEvent(data) ){
 				; Key up in Bind Mode - Fire _BindingDetected before updating _StateIndex, so it sees all the keys as down.
 				; Pass data so it can see the End Key
 				this._BindingDetected(data)
 			}
 			; Update _StateIndex array
 			
-			this.StateObjAddCommonVariant(this._StateIndex, data.event, data.input.vk, data.input.sc)
-			this._StateIndex[HH_TYPE_K][data.input.vk] := data.event
+			if (data.type = HH_TYPE_K){
+				this.StateObjAddCommonVariant(this._StateIndex, data.event, data.input.vk, data.input.sc)
+			}
+			this._StateIndex[data.type][data.input.vk] := data.event
 			
 			; Exit bind Mode here, so we can be sure all input generated during Bind Mode is blocked, where possible.
 			; ToDo data.event will not suffice for sticks?
-			if (this._BindMode && !data.event){
+			if ( this._BindMode && this.IsUpEvent(data) ){
+				if (this.IsWheelType(data) && data.input.vk = HH_MOUSE_NAME_LOOKUP.Wheel){
+					; Mouse Wheel has no up event, so release it now
+					this._StateIndex[data.type][data.input.vk] := 0
+				}
 				this._BindMode := 0
 			}
 			
@@ -246,7 +291,7 @@ Class CHIDHotkeys {
 			}
 
 			; find the total number of modifier keys currently held
-			modsheld := this._StateIndex[HH_TYPE_K][0x10] + this._StateIndex[HH_TYPE_K][0x11] + this._StateIndex[HH_TYPE_K][0x5D] + this._StateIndex[HH_TYPE_K][0x12]
+			modsheld := this._StateIndex[data.type][0x10] + this._StateIndex[data.type][0x11] + this._StateIndex[data.type][0x5D] + this._StateIndex[data.type][0x12]
 			
 			; Find best match for binding
 			best_match := {binding: 0, modcount: 0}
@@ -303,8 +348,8 @@ Class CHIDHotkeys {
 		return 0
 	}
 
-	; Process Keyboard and Mouse messages from Hooks
-	_ProcessHook(nCode, wParam, lParam){
+	; Process Keyboard messages from Hooks
+	_ProcessKHook(nCode, wParam, lParam){
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
@@ -315,6 +360,70 @@ Class CHIDHotkeys {
 			}
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
+	}
+	
+	; Process Mouse messages from Hooks
+	_ProcessMHook(nCode, wParam, lParam){
+		; Mouse callback struct: https://msdn.microsoft.com/en-us/library/windows/desktop/ms644970(v=vs.85).aspx
+		static WM_LBUTTONDOWN := 0x0201, WM_LBUTTONUP := 0x0202 , WM_RBUTTONDOWN := 0x0204, WM_RBUTTONUP := 0x0205, WM_MBUTTONDOWN := 0x0207, WM_MBUTTONUP := 0x0208, WM_MOUSEHWHEEL := x020E, WM_MOUSEWHEEL := 0x020A, WM_XBUTTONDOWN := 0x020B, WM_XBUTTONUP := 0x020C
+		Critical
+		
+		; Filter out mouse move
+		if (wParam != 0x200){
+			mouseData := NumGet(lParam+0, 8, "Uint")
+			flags := NumGet(lParam+0, 12, "Uint")
+			
+			vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
+			if (wParam = WM_LBUTTONUP || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONUP ){
+				; Normally supported up event
+				event := 0
+			} else if (wParam = WM_MOUSEWHEEL) {
+				; Mouse wheel has no up event
+				vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
+				; event = 1 for up, -1 for down
+				if (this.IsBitSet(mouseData,23)){
+					event := 1
+				} else {
+					event := -1
+				}
+			} else if (wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ){
+				vk := this.IsBitSet(mouseData,18) + 4
+				if (wParam = WM_XBUTTONUP){
+					a := 1
+				} else {
+					a := 2
+				}
+				event := (wParam = WM_XBUTTONDOWN)
+				if (mouseData & 2){
+					; 2nd XButton was hit
+					vk++
+				}
+			} else {
+				; Only down left
+				event := 1
+			}
+			;tooltip % "type: " HH_INPUT_TYPES[HH_TYPE_M] "`ncode: " vk "`nevent: " event
+			If ( wParam = 0x0201 || wParam = 0x0202 || wParam = 0x0204 || wParam = 0x0205 || wParam = 0x0207 || wParam = 0x0208 || wParam = 0x020E || wParam = 0x020A || wParam = 0x020B ) {
+				if (this._ProcessInput({type: HH_TYPE_M, input: { vk: vk}, event: event})){
+					; Return 1 to block this input
+					; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
+					return 1
+				}
+			}
+		}
+		Return this._CallNextHookEx(nCode, wParam, lParam)
+	}
+	
+	IsBitSet(n,bit){
+		return ( (n & ( 1 << (bit-1) ) ) != 0)
+		/*
+		; Create a number with just the bit we want set to 1
+		mask := 1 << (bit-1)
+		; Bitwise AND
+		res := n & mask
+		; If bit was set, will contain a number, else will be empty
+		return (res != 0)
+		*/
 	}
 	
 	/*
