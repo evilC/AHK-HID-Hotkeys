@@ -44,6 +44,7 @@ BindingDetected(binding, data){
 	if (human_readable.modifiers){
 		s .= " while holding " human_readable.modifiers
 	}
+	ClipBoard := s
 	msgbox % s
 }
 
