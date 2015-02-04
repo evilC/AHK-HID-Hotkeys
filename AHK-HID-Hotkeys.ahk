@@ -1,6 +1,14 @@
+; DEPENDENCIES:
+; _Struct():  https://raw.githubusercontent.com/HotKeyIt/_Struct/master/_Struct.ahk - docs: http://www.autohotkey.net/~HotKeyIt/AutoHotkey/_Struct.htm
+; sizeof(): https://raw.githubusercontent.com/HotKeyIt/_Struct/master/sizeof.ahk - docs: http://www.autohotkey.net/~HotKeyIt/AutoHotkey/sizeof.htm
+; WinStructs: https://github.com/ahkscript/WinStructs
+
 ;#include <AHKHID>
+#include <_Struct>
+#include <WinStructs>
 /*
 ToDo:
+* Per-App settings
 * _StateIndex, _Bindings dynamic properties - set 0 on unset.
 * HID input for joystick support
 * Allow removal of bindings
@@ -379,6 +387,9 @@ Class CHIDHotkeys {
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
+			lp := new _Struct(WinStructs.KBDLLHOOKSTRUCT,,lParam+0)
+			;MsgBox % "lpvk: " lp.vkCode  ", vk: " NumGet(lParam+0, 0, "Uint") "`nlpsc: " lp.scanCode ", sc: " NumGet(lParam+0, 4, "Uint")
+			;if (this._ProcessInput({type: HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
 			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flags: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
@@ -396,9 +407,9 @@ Class CHIDHotkeys {
 		
 		; Filter out mouse move and other unwanted messages
 		If ( wParam = WM_LBUTTONDOWN || wParam = WM_LBUTTONUP || wParam = WM_RBUTTONDOWN || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONDOWN || wParam = WM_MBUTTONUP || wParam = WM_MOUSEWHEEL || wParam = WM_MOUSEHWHEEL || wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ) {
-			; ToDo: Some of these numgets and bit comparison seem a little dodgy. Can be improved.
-			mouseData := NumGet(lParam+0, 8, "Uint")
-			flags := NumGet(lParam+0, 12, "Uint")
+			lp := new _Struct(WinStructs.MSLLHOOKSTRUCT,,lParam)
+			mouseData := lp.mouseData
+			flags := lp.flags
 			
 			vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
 			if (wParam = WM_LBUTTONUP || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONUP ){
