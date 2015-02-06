@@ -387,10 +387,10 @@ Class CHIDHotkeys {
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
-			lp := new _Struct(WinStructs.KBDLLHOOKSTRUCT,,lParam+0)
+			lp := new _Struct(WinStructs.KBDLLHOOKSTRUCT,lParam+0)
 			;MsgBox % "lpvk: " lp.vkCode  ", vk: " NumGet(lParam+0, 0, "Uint") "`nlpsc: " lp.scanCode ", sc: " NumGet(lParam+0, 4, "Uint")
-			;if (this._ProcessInput({type: HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
-			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flags: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
+			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
+			;if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flags: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
