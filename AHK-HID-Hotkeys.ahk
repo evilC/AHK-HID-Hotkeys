@@ -40,9 +40,15 @@ HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE
 
 mc := new CMainClass()
 
-HKHandler.Bind("BindingDetected")
-
 Return
+
+F12::
+	while (GetKeyState("F12", "P")){
+		Sleep 20
+	}
+	HKHandler.Bind("BindingDetected")
+	return
+
 
 ; Test Bind ended
 ; data holds information about the key that triggered exit of Bind Mode
@@ -407,8 +413,14 @@ Class CHIDHotkeys {
 		
 		; Filter out mouse move and other unwanted messages
 		If ( wParam = WM_LBUTTONDOWN || wParam = WM_LBUTTONUP || wParam = WM_RBUTTONDOWN || wParam = WM_RBUTTONUP || wParam = WM_MBUTTONDOWN || wParam = WM_MBUTTONUP || wParam = WM_MOUSEWHEEL || wParam = WM_MOUSEHWHEEL || wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ) {
-			lp := new _Struct(WinStructs.MSLLHOOKSTRUCT,,lParam)
-			mouseData := lp.mouseData
+			lp := new _Struct(WinStructs.MSLLHOOKSTRUCT,lParam)
+			if (wParam = WM_MOUSEWHEEL || wParam = WM_MOUSEHWHEEL){
+				mouseData := new _Struct("Short sht",lp.mouseData_high[""]).sht
+			} else {
+				mouseData := lp.mouseData_high
+			}
+			;ToolTip % "md: " mouseData
+			
 			flags := lp.flags
 			
 			vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
@@ -419,18 +431,16 @@ Class CHIDHotkeys {
 				; Mouse wheel has no up event
 				vk := HH_MOUSE_WPARAM_LOOKUP[wParam]
 				; event = 1 for up, -1 for down
-				; wheel vector is stored as signed. For now, just look at 2`s compliment bit to see if negative. Could be >1 tick though? Do we care?
-				if (this.IsBitSet(mouseData,23)){
+				if (mouseData < 0){
 					event := 1
 				} else {
 					event := -1
 				}
 			} else if (wParam = WM_XBUTTONDOWN || wParam = WM_XBUTTONUP ){
-				; Bit 18 identifies XButton 1/2 instead of a unique wParam
 				if (wParam = WM_XBUTTONUP){
 					debug := "me"
 				}
-				vk := this.IsBitSet(mouseData,18) + 4
+				vk := 3 + mouseData
 				event := (wParam = WM_XBUTTONDOWN)
 			} else {
 				; Only down left
@@ -446,18 +456,6 @@ Class CHIDHotkeys {
 			debug := "here"
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
-	}
-	
-	IsBitSet(n,bit){
-		return ( (n & ( 1 << (bit-1) ) ) != 0)
-		/*
-		; Create a number with just the bit we want set to 1
-		mask := 1 << (bit-1)
-		; Bitwise AND
-		res := n & mask
-		; If bit was set, will contain a number, else will be empty
-		return (res != 0)
-		*/
 	}
 	
 	; converts to hex, pads to 4 digits, chops off 0x
