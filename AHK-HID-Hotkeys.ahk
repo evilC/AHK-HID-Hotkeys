@@ -23,9 +23,6 @@ Bugs:
 OnExit, GuiClose
 
 ; Input types. These match HID input types
-global HH_TYPE_M := 0
-global HH_TYPE_K := 1
-global HH_TYPE_O := 2
 global HH_MOUSE_WPARAM_LOOKUP := {0x201: 1, 0x202: 1, 0x204: 2, 0x205: 2, 0x207: 3, 0x208: 3, 0x20A: 6, 0x20E: 7} ; No XButton 2 lookup as it lacks a unique wParam
 global HH_MOUSE_NAME_LOOKUP := {LButton: 1, RButton: 2, MButton: 3, XButton1: 4, XButton2: 5, Wheel: 6, Tilt: 7}
 global HH_MOUSE_BUTTON_NAMES := ["LButton", "RButton", "MButton", "XButton1", "XButton2", "MWheel", "MTilt"]
@@ -33,10 +30,10 @@ global HH_INPUT_TYPES := {0: "Mouse", 1: "Keyboard", 2: "Other"}
 
 HKHandler := new CHIDHotkeys()
 
-fn := Bind("AsynchBeep", 1000)
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: fn, modes: {passthru: 0, wild: 1}, event: 1})
-fn := Bind("AsynchBeep", 500)
-HKHandler.Add({type: HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: HH_TYPE_K, input: GetKeyVK("ctrl")},{type: HH_TYPE_K, input: GetKeyVK("shift")}], callback: fn, modes: {passthru: 0}, event: 1})
+;fn := Bind("AsynchBeep", 1000)
+;HKHandler.Add({type: CHIDHotkeys.HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: CHIDHotkeys.HH_TYPE_K, input: GetKeyVK("ctrl")}], callback: fn, modes: {passthru: 0, wild: 1}, event: 1})
+;fn := Bind("AsynchBeep", 500)
+;HKHandler.Add({type: CHIDHotkeys.HH_TYPE_K, input: GetKeyVK("a"), modifiers: [{type: CHIDHotkeys.HH_TYPE_K, input: GetKeyVK("ctrl")},{type: CHIDHotkeys.HH_TYPE_K, input: GetKeyVK("shift")}], callback: fn, modes: {passthru: 0}, event: 1})
 
 mc := new CMainClass()
 
@@ -102,6 +99,9 @@ Class CHIDHotkeys {
 	_MAPVK_VSC_TO_VK := {}		; Holds lookup table for left / right handed keys (eg lctrl/rctrl) to common version (eg ctrl)
 	_MAPVK_VK_TO_VSC := {}		; Lookup table for going the other way
 	_MapTypes := { 0:"_MAPVK_VK_TO_VSC", 1:"_MAPVK_VSC_TO_VK"}	; VK to Scancode Lookup tables.
+	
+	HH_TYPE_M := 0, HH_TYPE_K := 1, HH_TYPE_O := 2
+
 
 	; USER METHODS ================================================================================================================================
 	; Stuff intended for everyday use by people using the class.
@@ -126,10 +126,10 @@ Class CHIDHotkeys {
 	
 	; Converts an Input to a human readable format.
 	GetInputHumanReadable(type, code) {
-		if (type = HH_TYPE_K){
+		if (type = CHIDHotkeys.HH_TYPE_K){
 			vk := Format("{:x}",code)
 			keyname := GetKeyName("vk" vk)
-		} else if (type = HH_TYPE_M){
+		} else if (type = CHIDHotkeys.HH_TYPE_M){
 			keyname := HH_MOUSE_BUTTON_NAMES[code]
 		}
 		StringUpper, keyname, keyname
@@ -173,7 +173,7 @@ Class CHIDHotkeys {
 		translated_vk := this._MapVirtualKeyEx(sc)
 		if ( translated_vk && (translated_vk != vk) ){
 			; Has a left / right variant
-			obj[HH_TYPE_K][translated_vk] := state
+			obj[CHIDHotkeys.HH_TYPE_K][translated_vk] := state
 			return 1
 		}
 		return 0
@@ -193,7 +193,7 @@ Class CHIDHotkeys {
 			; Convert non left/right sensitve SC back to VK
 			res := this._MapVirtualKeyEx(res,1)
 			
-			if (data.type = HH_TYPE_K){
+			if (data.type = CHIDHotkeys.HH_TYPE_K){
 				; End key is keyboard - Find "Common" version for end key
 				ekc := this._MapVirtualKeyEx(data.input.vk,0)
 				ekc := this._MapVirtualKeyEx(ekc,1)
@@ -217,7 +217,7 @@ Class CHIDHotkeys {
 	
 	; Data packet is of mouse wheel motion
 	IsWheelType(data){
-		return (data.type = HH_TYPE_M) && (data.input.vk = HH_MOUSE_NAME_LOOKUP.Wheel)
+		return (data.type = CHIDHotkeys.HH_TYPE_M) && (data.input.vk = HH_MOUSE_NAME_LOOKUP.Wheel)
 	}
 	
 	; Data packet is an up event for a button or a mouse wheel move (Which does not have up events)
@@ -249,7 +249,7 @@ Class CHIDHotkeys {
 		
 		; Discern End-Key from rest of State
 		; "End Pair" (state + endkey data) starts here.
-		input_state := {0: this._StateIndex[HH_TYPE_M], 1: this.StateObjRemoveCommonVariants(this._StateIndex[HH_TYPE_K], data) }
+		input_state := {0: this._StateIndex[CHIDHotkeys.HH_TYPE_M], 1: this.StateObjRemoveCommonVariants(this._StateIndex[CHIDHotkeys.HH_TYPE_K], data) }
 		output_state := {0: {}, 1: {} }
 
 		; Walk _StateIndex and copy where button is held.
@@ -294,7 +294,7 @@ Class CHIDHotkeys {
 	; SetWindowsHookEx (Keyboard, Mouse) to route via here.
 	; HID input (eg sticks) to be routed via here too.
 	_ProcessInput(data){
-		if (data.type = HH_TYPE_K || data.type = HH_TYPE_M){
+		if (data.type = CHIDHotkeys.HH_TYPE_K || data.type = CHIDHotkeys.HH_TYPE_M){
 			; Set _StateIndex to reflect state of key
 			; lr_variant := data.input.flags & 1	; is this the left (0) or right (1) version of this key?
 			if (data.input.vk = 65){
@@ -310,7 +310,7 @@ Class CHIDHotkeys {
 			}
 			; Update _StateIndex array
 			
-			if (data.type = HH_TYPE_K){
+			if (data.type = CHIDHotkeys.HH_TYPE_K){
 				this.StateObjAddCommonVariant(this._StateIndex, data.event, data.input.vk, data.input.sc)
 			}
 			this._StateIndex[data.type][data.input.vk] := data.event
@@ -395,7 +395,7 @@ Class CHIDHotkeys {
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
 			lp := new _Struct(WinStructs.KBDLLHOOKSTRUCT,lParam+0)
-			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
+			if (this._ProcessInput({type: CHIDHotkeys.HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
@@ -445,8 +445,8 @@ Class CHIDHotkeys {
 				; Only down left
 				event := 1
 			}
-			;tooltip % "type: " HH_INPUT_TYPES[HH_TYPE_M] "`ncode: " vk "`nevent: " event
-			if (this._ProcessInput({type: HH_TYPE_M, input: { vk: vk}, event: event})){
+			;tooltip % "type: " HH_INPUT_TYPES[CHIDHotkeys.HH_TYPE_M] "`ncode: " vk "`nevent: " event
+			if (this._ProcessInput({type: CHIDHotkeys.HH_TYPE_M, input: { vk: vk}, event: event})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
