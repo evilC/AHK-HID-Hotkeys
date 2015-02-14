@@ -26,7 +26,7 @@ OnExit, GuiClose
 global HH_TYPE_M := 0
 global HH_TYPE_K := 1
 global HH_TYPE_O := 2
-global HH_MOUSE_WPARAM_LOOKUP := {0x201: 1, 0x202: 1, 0x204: 2, 0x205: 2, 0x207: 3, 0x208: 3, 0x020B: 4, 0x020C: 4, 0x20A: 6, 0x20E: 7} ; No XButton 2 lookup as it lacks a unique wParam
+global HH_MOUSE_WPARAM_LOOKUP := {0x201: 1, 0x202: 1, 0x204: 2, 0x205: 2, 0x207: 3, 0x208: 3, 0x20A: 6, 0x20E: 7} ; No XButton 2 lookup as it lacks a unique wParam
 global HH_MOUSE_NAME_LOOKUP := {LButton: 1, RButton: 2, MButton: 3, XButton1: 4, XButton2: 5, Wheel: 6, Tilt: 7}
 global HH_MOUSE_BUTTON_NAMES := ["LButton", "RButton", "MButton", "XButton1", "XButton2", "MWheel", "MTilt"]
 global HH_INPUT_TYPES := {0: "Mouse", 1: "Keyboard", 2: "Other"}
@@ -127,7 +127,7 @@ Class CHIDHotkeys {
 	; Converts an Input to a human readable format.
 	GetInputHumanReadable(type, code) {
 		if (type = HH_TYPE_K){
-			vk := this.ToHex(code,2)
+			vk := Format("{:x}",code)
 			keyname := GetKeyName("vk" vk)
 		} else if (type = HH_TYPE_M){
 			keyname := HH_MOUSE_BUTTON_NAMES[code]
@@ -390,13 +390,12 @@ Class CHIDHotkeys {
 
 	; Process Keyboard messages from Hooks and feed _ProcessInput
 	_ProcessKHook(nCode, wParam, lParam){
+		; KBDLLHOOKSTRUCT structure: https://msdn.microsoft.com/en-us/library/windows/desktop/ms644967%28v=vs.85%29.aspx
 		Critical
 		
 		If ((wParam = 0x100) || (wParam = 0x101)) { ; WM_KEYDOWN || WM_KEYUP
 			lp := new _Struct(WinStructs.KBDLLHOOKSTRUCT,lParam+0)
-			;MsgBox % "lpvk: " lp.vkCode  ", vk: " NumGet(lParam+0, 0, "Uint") "`nlpsc: " lp.scanCode ", sc: " NumGet(lParam+0, 4, "Uint")
 			if (this._ProcessInput({type: HH_TYPE_K, input: { vk: lp.vkCode, sc: lp.scanCode, flags: lp.flags}, event: wParam = 0x100})){
-			;if (this._ProcessInput({type: HH_TYPE_K, input: { vk: NumGet(lParam+0, 0, "Uint"), sc: NumGet(lParam+0, 4, "Uint"), flags: NumGet(lParam+0, 8, "Uint")}, event: wParam = 0x100})){
 				; Return 1 to block this input
 				; ToDo: call _ProcessInput via another thread? We only have 300ms to return 1 else it wont get blocked?
 				return 1
@@ -407,7 +406,7 @@ Class CHIDHotkeys {
 	
 	; Process Mouse messages from Hooks and feed _ProcessInput
 	_ProcessMHook(nCode, wParam, lParam){
-		; Mouse callback struct: https://msdn.microsoft.com/en-us/library/windows/desktop/ms644970(v=vs.85).aspx
+		; MSLLHOOKSTRUCT structure: https://msdn.microsoft.com/en-us/library/windows/desktop/ms644970(v=vs.85).aspx
 		static WM_LBUTTONDOWN := 0x0201, WM_LBUTTONUP := 0x0202 , WM_RBUTTONDOWN := 0x0204, WM_RBUTTONUP := 0x0205, WM_MBUTTONDOWN := 0x0207, WM_MBUTTONUP := 0x0208, WM_MOUSEHWHEEL := x020E, WM_MOUSEWHEEL := 0x020A, WM_XBUTTONDOWN := 0x020B, WM_XBUTTONUP := 0x020C
 		Critical
 		
@@ -456,46 +455,6 @@ Class CHIDHotkeys {
 			debug := "here"
 		}
 		Return this._CallNextHookEx(nCode, wParam, lParam)
-	}
-	
-	; converts to hex, pads to 4 digits, chops off 0x
-	ToHex(dec, padding := 4){
-		return Substr(this.Convert2Hex(dec,padding),3)
-	}
-
-	Convert2Hex(p_Integer,p_MinDigits=0) {
-		;-- Workaround for AutoHotkey Basic
-		PtrType:=(A_PtrSize=8) ? "Ptr":"UInt"
-	 
-		;-- Negative?
-		if (p_Integer<0)
-			{
-			l_NegativeChar:="-"
-			p_Integer:=-p_Integer
-			}
-	 
-		;-- Determine the width (in characters) of the output buffer
-		nSize:=(p_Integer=0) ? 1:Floor(Ln(p_Integer)/Ln(16))+1
-		if (p_MinDigits>nSize)
-			nSize:=p_MinDigits+0
-	 
-		;-- Build Format string
-		l_Format:="`%0" . nSize . "I64X"
-	 
-		;-- Create and populate l_Argument
-		VarSetCapacity(l_Argument,8)
-		NumPut(p_Integer,l_Argument,0,"Int64")
-	 
-		;-- Convert
-		VarSetCapacity(l_Buffer,A_IsUnicode ? nSize*2:nSize,0)
-		DllCall(A_IsUnicode ? "msvcrt\_vsnwprintf":"msvcrt\_vsnprintf"
-			,"Str",l_Buffer             ;-- Storage location for output
-			,"UInt",nSize               ;-- Maximum number of characters to write
-			,"Str",l_Format             ;-- Format specification
-			,PtrType,&l_Argument)       ;-- Argument
-	 
-		;-- Assemble and return the final value
-		Return l_NegativeChar . "0x" . l_Buffer
 	}
 	
 	_SetWindowsHookEx(idHook, pfn){
